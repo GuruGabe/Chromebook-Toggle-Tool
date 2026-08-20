@@ -86,8 +86,16 @@ Prebuilt (no Python required):
 2. Download the latest `ChromebookToggle-vX.Y-Windows.zip`.
 3. Unzip it and keep the whole `ChromebookToggle` folder together (the
    `.exe` needs the `_internal` folder next to it).
-4. Edit `settings.ini` next to the `.exe` if `gam_path` or
-   `sheet_acting_email` need to point somewhere other than the defaults.
+4. Edit `settings.ini` next to the `.exe`:
+   - `gam_path` - update if `gam.exe` isn't at `C:\GAM7\gam.exe`.
+   - `sheet_acting_email` - **required if you'll use Google Sheet input.**
+     It ships set to the placeholder `gam-admin@example.com`, which is not
+     a real account and will not work as-is. Change it to a real Google
+     Workspace account in your own domain that GAM is authorized to act
+     as - every Google Sheet you want to read must be shared with that
+     same account (see [What it actually does](#what-it-actually-does)).
+     Individual-entry and CSV input don't use this value at all, so you
+     can skip this if you'll only ever use those two modes.
 5. Double-click `ChromebookToggle.exe`. (Windows may warn about an
    unrecognized publisher since it isn't code-signed - choose **More
    info -> Run anyway**.)

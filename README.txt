@@ -123,6 +123,17 @@ Chromebook, a user account, or an OU.
     - sheet_acting_email - the Workspace account GAM uses to read a Google
                             Sheet in Google Sheet mode.
                             Default: gam-admin@example.com
+
+                            IMPORTANT: gam-admin@example.com is a placeholder,
+                            not a real account - it ships this way and will
+                            NOT work as-is. Before using Google Sheet mode,
+                            change this to a real Google Workspace account in
+                            your own domain that GAM is authorized to act as,
+                            and share every Google Sheet you want to read
+                            with that same account. Individual-entry and CSV
+                            mode do not use this setting at all - you can
+                            leave it as the placeholder if you only ever use
+                            those two input methods.
   If settings.ini is missing, deleted, or has a typo in it, the tool falls
   back to the two defaults above automatically rather than failing to start.
 
