@@ -1,0 +1,74 @@
+================================================================================
+CHANGELOG - Chromebook Toggle Tool
+================================================================================
+08-10-2026 - v1.0
+  - Initial release. Windows desktop GUI for Disabling or Re-enabling
+    Chromebooks in Google Workspace through GAM7, with three input methods:
+    typed/pasted serial list, CSV file, or Google Sheet URL.
+  - Individual and CSV modes show a full pre-action review screen (per-device
+    current status and whether each device will be processed or skipped, and
+    why) before anything is changed; Google Sheet mode shows a simpler
+    confirm screen since GAM reads the sheet directly at execution time.
+  - Every action's result is independently re-verified with a second,
+    read-only device lookup after the action runs - success is never assumed
+    from GAM's exit code alone.
+  - Individual and CSV mode runs write a local audit log CSV to a Logs folder
+    next to the EXE (no shared/network copy); Google Sheet mode instead shows
+    GAM's raw output on screen, since there is no per-device result data to
+    log for that mode.
+  - Packaged as a self-contained, one-folder EXE (dist\ChromebookToggle\) via
+    PyInstaller, with settings.ini (gam_path, sheet_acting_email) placed
+    directly beside the EXE for easy editing without a rebuild.
+
+08-10-2026 - v1.1
+  - Fixed a real bug hit during Gabe's first actual use: looking up more than
+    one serial at once (pasted list or CSV) failed with "Could not parse
+    device lookup output as JSON... Extra data: line 2 column 1". Root cause,
+    confirmed via a live re-test against 3 real devices: gam.exe's
+    "formatjson" output for multiple devices is newline-delimited JSON (one
+    JSON object per line), not the JSON array the original code assumed and
+    had explicitly flagged as never live-verified. device_lookup.py now
+    parses each line independently; single-device lookups are unaffected.
+  - Fixed Build-EXE.bat to rebuild cleanly over an existing dist\ folder
+    (added the -y flag) instead of hard-erroring on a second build.
+  - Rebuilt dist\ChromebookToggle\ChromebookToggle.exe with this fix.
+
+08-10-2026 - v1.2 (CRITICAL FIX)
+  - Fixed a critical bug: the Disable/Re-enable action itself was silently
+    doing nothing. Gabe's real disable attempt against 8 real Chromebooks
+    reported success on-screen but changed none of them - all 8 were
+    confirmed still ACTIVE via a live read-only re-check afterward. Root
+    cause, confirmed via a separate live read-only reproduction: the action
+    command builders (build_csv_action_args, build_gsheet_action_args in
+    gam_runner.py) substituted a bare serial number into the gam command
+    instead of prefixing it with "cros_sn" - GAM interpreted the bare value
+    as its own internal device ID (which never matches a real serial), so
+    every disable/re-enable call silently targeted a nonexistent device
+    while still reporting overall success. The read-only lookup command was
+    never affected (it already used the correct cros_sn prefix), which is
+    why the earlier NDJSON parsing fix and all prior testing looked fine.
+  - Also hardened gam_runner.py against a previously-uncaught encoding
+    failure path (run_gam now explicitly decodes gam.exe's output as UTF-8
+    with a safe fallback instead of trusting the OS's default codec), and
+    consolidated the "cros_sn" string into a single shared constant to
+    prevent this exact class of bug from being reintroduced by a future
+    edit to only one of the three command-building functions.
+  - Rebuilt dist\ChromebookToggle\ChromebookToggle.exe with this fix. None
+    of the 8 real devices from the original test were left in a changed
+    state - the bug's failure mode was "do nothing," not "do the wrong
+    thing." Re-testing against real devices is required before further
+    rollout.
+
+08-10-2026 - v1.3
+  - Stopped shipping Tcl's loose encoding/*.enc files in the packaged EXE.
+    Endpoint security products (e.g. CrowdStrike) can block files with the
+    .enc extension - it looks like ransomware-encrypted output - which
+    would make copying dist\ChromebookToggle\ to another PC fail with
+    permission-denied errors. Tcl 9 also keeps copies of these same
+    encoding tables inside tcl90.dll itself and falls back to them
+    automatically if the loose files are absent, so extract_tcl.py now
+    deletes them after extraction. Same fix already proven working in the
+    GAMGUI and M365GUI sibling projects - reused here, not re-solved.
+    Verified: 0 .enc files in the rebuilt dist\ChromebookToggle\, app still
+    launches and renders normally without them.
+================================================================================
