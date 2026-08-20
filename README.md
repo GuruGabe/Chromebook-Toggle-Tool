@@ -12,7 +12,7 @@ happen, confirm, and get a results screen that shows what actually changed
 GAM's exit code.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Platform](https://img.shields.io/badge/platform-Windows-informational)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20source%3A%20macOS%2FLinux-informational)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green)
 ![Dependencies](https://img.shields.io/badge/dependencies-none%20(standard%20library)-brightgreen)
 
@@ -123,42 +123,104 @@ action.
 
 ---
 
-## Build from source
+## Running and building from source (Windows, macOS, Linux)
 
-Requires Python 3.10+ **with tkinter** (included in the standard
-python.org Windows installer) and PyInstaller (`pip install pyinstaller`).
+This tool is standard-library-only Python (tkinter), so it runs on all
+three platforms. You still need GAM7 installed and authorized on whichever
+machine actually runs it (see [Get it running](#get-it-running) above) -
+that part is Windows/macOS/Linux-agnostic too, since GAM7 itself is
+cross-platform.
 
-```bat
-Build-EXE.bat
-```
+### Run without building (simplest)
 
-This runs `extract_tcl.py` (needed on Python 3.14+, where Tcl/Tk 9 stores
-its script library inside the DLL rather than as loose files PyInstaller
-can find on its own) and then PyInstaller in one-folder mode. The result is
-`dist\ChromebookToggle\` - copy the whole folder and keep it together.
+Requires Python 3.10+ **with tkinter**:
 
-Run without building, for development:
+- **Windows** - tkinter is included with the python.org installer:
+  ```bat
+  py ChromebookToggle.py
+  ```
+- **macOS** - the python.org installer includes tkinter. If you use
+  Homebrew Python, add it first with `brew install python-tk`:
+  ```bash
+  python3 ChromebookToggle.py
+  ```
+- **Linux** - install tkinter from your package manager, then run it:
+  ```bash
+  # Debian/Ubuntu:
+  sudo apt install python3 python3-tk
+  # Fedora/RHEL:
+  sudo dnf install python3 python3-tkinter
+  # Arch:
+  sudo pacman -S tk
+  python3 ChromebookToggle.py
+  ```
 
-```bat
-py ChromebookToggle.py
-```
+Run the test suite the same way on any platform:
 
-Run the test suite:
-
-```bat
+```bash
 python -m unittest discover -v
 ```
 
+### Build a standalone app (PyInstaller)
+
+Install PyInstaller once: `pip install pyinstaller` (or `pip3 install ...`).
+
+- **Windows:**
+  ```bat
+  Build-EXE.bat
+  ```
+- **macOS / Linux:**
+  ```bash
+  chmod +x build-app.sh
+  ./build-app.sh
+  ```
+
+Both scripts run `extract_tcl.py`, then PyInstaller in one-folder mode,
+then copy `settings.ini` directly beside the built executable. The result
+is `dist/ChromebookToggle/` - copy the whole folder and keep it together
+(on macOS you also get a `dist/ChromebookToggle.app` bundle). Run
+`dist/ChromebookToggle/ChromebookToggle` (or the `.app`).
+
+Prefer the raw PyInstaller command?
+
+```bash
+# Python 3.13 or earlier (Tcl/Tk 8.6): no extract step needed.
+pyinstaller --onedir --windowed --name ChromebookToggle ChromebookToggle.py
+
+# Python 3.14+ (Tcl/Tk 9): extract the Tcl data first, then bundle it.
+python3 extract_tcl.py
+pyinstaller --onedir --windowed --name ChromebookToggle \
+    --add-data "build_res/_tcl_data:_tcl_data" \
+    --add-data "build_res/_tk_data:_tk_data" \
+    ChromebookToggle.py
+```
+
+macOS/Linux use a colon (`:`) in `--add-data`; Windows uses a semicolon
+(`;`). Either way, copy `settings.ini` next to the built executable
+afterward - it isn't bundled automatically by design (see
+[Project files](#project-files)).
+
 ### Why the extract step, and why it drops `.enc` files
 
-Tcl/Tk 9 stores its script library inside the Tcl DLL as a virtual zip
-filesystem, which PyInstaller doesn't bundle on its own - without this step
-the app crashes at startup with `Tcl data directory _tcl_data not found`.
-`extract_tcl.py` also deletes the loose `encoding/*.enc` tables after
-extracting everything else, since some endpoint security products block
-files with the `.enc` extension outright (it resembles ransomware-encrypted
-output) - Tcl keeps its own internal copies of those same tables and falls
-back to them automatically when the loose files are absent.
+Tcl/Tk 9 stores its script library inside the Tcl shared library as a
+virtual zip filesystem, which PyInstaller doesn't bundle on its own -
+without this step the app crashes at startup with `Tcl data directory
+_tcl_data not found`. `extract_tcl.py` also deletes the loose
+`encoding/*.enc` tables after extracting everything else, since some
+endpoint security products block files with the `.enc` extension outright
+(it resembles ransomware-encrypted output) - Tcl keeps its own internal
+copies of those same tables and falls back to them automatically when the
+loose files are absent. On Python 3.13 or earlier you can skip this step
+entirely.
+
+### macOS Gatekeeper
+
+The app isn't code-signed, so macOS may block it on first launch.
+Right-click the app and choose **Open**, or clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine dist/ChromebookToggle
+```
 
 ---
 
@@ -182,7 +244,8 @@ back to them automatically when the loose files are absent.
 | `chromebook_toggle/` | The application: settings, serial/CSV/Sheet-URL parsing, GAM command building, response parsing, review/result logic, logging, and the GUI |
 | `tests/` | Unit tests, one file per module (`python -m unittest discover -v`) |
 | `extract_tcl.py` | Build helper: bundles Tcl/Tk data for Python 3.14+, drops `.enc` files |
-| `Build-EXE.bat` | One-command Windows build |
+| `Build-EXE.bat` | One-command build (Windows) |
+| `build-app.sh` | One-command build (macOS / Linux) |
 | `settings.ini` | Runtime config (`gam_path`, `sheet_acting_email`) - edit after deployment, no rebuild needed |
 | `README.txt` | Full plain-English reference and troubleshooting |
 | `CHANGELOG.txt` | Version history |
