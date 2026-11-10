@@ -17,3 +17,8 @@ settings.local.ini
 
 # Packaging artifacts (uploaded to GitHub Releases, not committed)
 *.zip
+
+# Claude Code: its local settings remember approved commands as typed, which can
+# include passwords or tokens - never publish this folder.
+.claude/
+CLAUDE.local.md
