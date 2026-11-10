@@ -3,8 +3,8 @@
 :: Script:   Build-EXE.bat
 :: Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google Workspace and generalized for public sharing.
 :: Created:  08-07-2026
-:: Modified: 08-07-2026
-:: Version:  1.0
+:: Modified: 11-10-2026
+:: Version:  1.1
 ::
 :: Purpose:
 ::   Builds the Chromebook Toggle Tool as a ONE-FOLDER app (dist\ChromebookToggle\)
@@ -78,7 +78,16 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 
+:: Step 4: copy the plain-English instructions beside the EXE as well, so
+:: whoever receives the folder (or the zip) has them with the app.
+COPY /Y "README.txt" "dist\ChromebookToggle\README.txt" >NUL
+IF ERRORLEVEL 1 (
+    ECHO Failed to copy README.txt into dist\ChromebookToggle\. Build aborted.
+    EXIT /B 1
+)
+
 ECHO.
 ECHO Build complete: dist\ChromebookToggle\  (run ChromebookToggle.exe inside it)
-ECHO Copy the whole dist\ChromebookToggle folder to each target PC.
+ECHO Copy the whole dist\ChromebookToggle folder to each target PC, or build the
+ECHO Windows installer from it:  iscc /DMyAppVersion=1.4 installer\chromebooktoggle.iss
 ENDLOCAL

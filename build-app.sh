@@ -61,6 +61,8 @@ echo "Extracting Tcl/Tk libraries..."
 # to be immediately visible, not buried among PyInstaller's support files.
 echo "Copying default settings.ini next to the executable..."
 cp settings.ini dist/ChromebookToggle/settings.ini
+# The plain-English instructions travel with the app too.
+cp README.txt dist/ChromebookToggle/README.txt
 
 # On macOS, PyInstaller --windowed also produces a proper .app bundle whose
 # real executable lives inside Contents/MacOS/ rather than at dist/App/App -
@@ -75,4 +77,4 @@ echo "Build complete: dist/ChromebookToggle/"
 echo "Run the ChromebookToggle executable inside that folder (keep the folder"
 echo "together, and settings.ini next to it)."
 echo "On macOS you can also open dist/ChromebookToggle.app (right-click ->"
-echo "Open the first time, since the app is not code-signed)."
+echo "Open the first time; it is signed ad-hoc, not notarized by Apple)."

@@ -1,0 +1,33 @@
+# =============================================================================
+# tests.yml - run the unit tests on Windows, macOS and Linux for every push
+# and pull request. The tests need no GAM, no Google account and no network
+# (the updater tests talk to a tiny local stand-in for GitHub).
+# =============================================================================
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Run the unit tests
+        run: python -m unittest discover -s tests -t . -v

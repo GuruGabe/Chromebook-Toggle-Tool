@@ -1,0 +1,238 @@
+# =============================================================================
+# build-installers.yml - build the Chromebook Toggle Tool for Windows, macOS
+# and Linux, and attach an INSTALLER and a portable archive for each OS to a
+# GitHub release. Also publishes the SHA-256 of every file in the release
+# notes, because the app's built-in updater refuses to install anything it
+# cannot check against a published checksum.
+#
+# Per OS this produces:
+#   Windows: ChromebookToggle-<ver>-Setup.exe   (Inno Setup installer)
+#            ChromebookToggle-<ver>-Windows.zip (portable)
+#   macOS:   ChromebookToggle-<ver>.dmg         (drag the app to Applications)
+#            ChromebookToggle-<ver>-macOS.zip   (the app, for the updater)
+#   Linux:   chromebooktoggle_<ver>_amd64.deb + chromebooktoggle-<ver>-1.x86_64.rpm
+#            ChromebookToggle-<ver>-Linux.tar.gz (portable)
+# (<ver> has no leading "v": tag v1.4 gives ChromebookToggle-1.4-Setup.exe.)
+#
+# HOW TO USE: Actions tab -> "Build installers" -> Run workflow -> enter the
+# tag (e.g. v1.4). The tag's number must equal APP_VERSION in
+# chromebook_toggle/version.py. If the release does not exist yet it is created
+# from that version's section of CHANGELOG.txt. See docs/RELEASING.md.
+# =============================================================================
+name: Build installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach the installers to (e.g. v1.4)"
+        required: true
+
+permissions:
+  contents: write            # required to create the release and upload assets
+
+jobs:
+  # ---- 1. Check the tag, make sure the release exists ------------------------
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.names.outputs.tag }}
+      ver: ${{ steps.names.outputs.ver }}
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Work out the tag and version, and check them against the code
+        id: names
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          # The input is used only through an environment variable (never pasted
+          # into the script), and must look like a version tag.
+          if ! [[ "$INPUT_TAG" =~ ^v?[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "Tag '$INPUT_TAG' is not a version like v1.4"; exit 1
+          fi
+          VER="${INPUT_TAG#v}"
+          CODE_VER="$(python3 -c "import re;print(re.search(r'APP_VERSION\s*=\s*\"([^\"]+)\"',open('chromebook_toggle/version.py').read()).group(1))")"
+          if [ "$VER" != "$CODE_VER" ]; then
+            echo "Tag says $VER but chromebook_toggle/version.py says $CODE_VER - fix one of them first."; exit 1
+          fi
+          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release from CHANGELOG.txt if it does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.names.outputs.tag }}
+          VER: ${{ steps.names.outputs.ver }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists - leaving its notes alone."
+          else
+            python3 installer/release_notes.py "$VER" > release-notes.md
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Chromebook Toggle Tool $VER" --notes-file release-notes.md
+          fi
+
+  # ---- 2. Build on each OS and attach the files -------------------------------
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false       # one OS failing must not cancel the others
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+          # Pinned: 'ubuntu-latest' moves between Ubuntu releases on GitHub's
+          # schedule. The .deb/.rpm are built and checked on 24.04; move on
+          # purpose, after a test build.
+          - os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VER: ${{ needs.prepare.outputs.ver }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install tkinter, Xvfb and packaging tools (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb ruby ruby-dev rpm build-essential
+          sudo gem install --no-document fpm
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      # A release is never built from code whose tests fail.
+      - name: Run the unit tests
+        run: python -m unittest discover -s tests -t .
+
+      # ---- Build the app ----------------------------------------------------
+      - name: Build app (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          python extract_tcl.py
+          python -m PyInstaller --onedir --windowed --noconfirm --name ChromebookToggle ^
+            --add-data "build_res/_tcl_data;_tcl_data" ^
+            --add-data "build_res/_tk_data;_tk_data" ChromebookToggle.py
+          copy /Y settings.ini dist\ChromebookToggle\settings.ini
+          copy /Y README.txt dist\ChromebookToggle\README.txt
+
+      # build-app.sh does the same steps as Build-EXE.bat for macOS/Linux
+      # (extract Tcl/Tk, PyInstaller, copy settings.ini + README.txt).
+      - name: Build app (macOS)
+        if: runner.os == 'macOS'
+        run: bash build-app.sh
+
+      - name: Build app (Linux; Xvfb gives the Tcl extract a display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a bash build-app.sh
+
+      # ---- Windows ----------------------------------------------------------
+      - name: Windows - portable zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/ChromebookToggle -DestinationPath "ChromebookToggle-$env:VER-Windows.zip"
+
+      - name: Windows - Inno Setup installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VER" "installer\chromebooktoggle.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      # ---- macOS ------------------------------------------------------------
+      # The DMG script stamps the version into the app, RE-SIGNS it (a stamped
+      # but not re-signed app is what macOS calls "damaged") and verifies it, so
+      # the zip below is made AFTER it and contains the same signed app.
+      - name: macOS - DMG
+        if: runner.os == 'macOS'
+        run: bash installer/build-macos-dmg.sh "$VER"
+
+      # 'ditto -c -k --keepParent' is Apple's way to zip an app bundle (keeps
+      # symlinks and metadata plain 'zip' can mangle). The zip is unpacked
+      # again and its signature verified so a broken zip fails the build.
+      - name: macOS - zip of the app, then verify it
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/ChromebookToggle.app "ChromebookToggle-$VER-macOS.zip"
+          CHECK="$(mktemp -d)"
+          ditto -x -k "ChromebookToggle-$VER-macOS.zip" "$CHECK"
+          codesign --verify --deep --strict --verbose=2 "$CHECK/ChromebookToggle.app"
+          echo "Zip OK: the app inside verifies"
+
+      # ---- Linux ------------------------------------------------------------
+      - name: Linux - portable tar.gz
+        if: runner.os == 'Linux'
+        run: tar -czf "ChromebookToggle-$VER-Linux.tar.gz" -C dist ChromebookToggle
+
+      - name: Linux - deb and rpm
+        if: runner.os == 'Linux'
+        run: bash installer/build-linux-packages.sh "$VER"
+
+      # ---- Attach to the release ---------------------------------------------
+      - name: Attach files (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: gh release upload "$env:TAG" "ChromebookToggle-$env:VER-Windows.zip" "ChromebookToggle-$env:VER-Setup.exe" --clobber
+
+      - name: Attach files (macOS)
+        if: runner.os == 'macOS'
+        run: gh release upload "$TAG" "ChromebookToggle-$VER-macOS.zip" "ChromebookToggle-$VER.dmg" --clobber
+
+      - name: Attach files (Linux)
+        if: runner.os == 'Linux'
+        run: gh release upload "$TAG" "ChromebookToggle-$VER-Linux.tar.gz" "chromebooktoggle_${VER}_amd64.deb" "chromebooktoggle-${VER}-1.x86_64.rpm" --clobber
+
+  # ---- 3. Publish the SHA-256 of every file in the release notes ---------------
+  # The in-app updater downloads a file only when its SHA-256 equals the
+  # "SHA-256 (<file>):" line in the notes. This job downloads the uploaded files
+  # back, hashes them, and (re)writes that block, so the notes always match what
+  # is actually attached.
+  checksums:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Download the release files and hash them
+        run: |
+          mkdir assets
+          gh release download "$TAG" --dir assets
+          ls -l assets
+          # The seven files the updater and the README promise.
+          COUNT="$(ls assets | wc -l)"
+          if [ "$COUNT" -ne 7 ]; then echo "Expected 7 release files, found $COUNT"; exit 1; fi
+          : > checksums.txt
+          for f in assets/*; do
+            printf 'SHA-256 (%s):\n%s\n\n' "$(basename "$f")" "$(sha256sum "$f" | cut -d' ' -f1 | tr a-f A-F)" >> checksums.txt
+          done
+          cat checksums.txt
+
+      - name: Put the checksums in the release notes (replacing any older block)
+        run: |
+          gh release view "$TAG" --json body --jq .body > body.txt
+          python3 - <<'PY'
+          # Keep everything above the marker, then append a fresh block.
+          marker = "## Checksums (SHA-256)"
+          body = open("body.txt", encoding="utf-8").read()
+          if marker in body:
+              body = body.split(marker)[0]
+          block = open("checksums.txt", encoding="utf-8").read()
+          new = body.rstrip() + "\n\n" + marker + "\n\n" + block
+          open("body.txt", "w", encoding="utf-8").write(new)
+          PY
+          gh release edit "$TAG" --notes-file body.txt

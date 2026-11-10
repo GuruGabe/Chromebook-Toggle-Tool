@@ -3,15 +3,19 @@
 # Script:   gui.py
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google Workspace and generalized for public sharing.
 # Created:  08-10-2026
-# Modified: 08-10-2026
-# Version:  1.1
+# Modified: 11-10-2026
+# Version:  1.2
 #
 # Purpose:
 #   The tkinter GUI for the Chromebook Toggle Tool. Lets an IT admin pick an
-#   action (disable/reenable) and an input method (typed/pasted serials, a
+#   action (disable / re-enable, and - only when settings.ini allows it -
+#   deprovision) and an input method (typed/pasted serials, a
 #   CSV file, or a Google Sheet), look devices up read-only, review exactly
 #   what will happen, confirm, run the action through gam.exe, and see
-#   verified before/after results. This module wires together config.py,
+#   verified before/after results. Version 1.2 added the Deprovision action
+#   (permanent, hidden unless allow_deprovision is on, and always gated by a
+#   typed confirmation), the Help menu, and the self-updater (update_ui.py).
+#   This module wires together config.py,
 #   serials.py, sheet_url.py, gam_runner.py, device_lookup.py, workflow.py,
 #   logging_util.py (Tasks 1-7), and gam_calls.py (also Task 8, split out
 #   from this file - see below) - all of those are already unit-tested in
@@ -66,45 +70,62 @@
 #         thread calling .get() on a tk.StringVar itself.
 
 import os
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import config, gam_calls, gam_runner, serials, sheet_url
+from . import (actions, config, dialogs, gam_calls, gam_runner, serials, sheet_url,
+               update_ui, version)
 
 # Shown as the messagebox title and the window title, so every dialog this
 # tool pops up is clearly identifiable to whoever is looking at the screen.
-APP_TITLE = "Chromebook Toggle Tool"
+APP_TITLE = version.APP_NAME
 
-# Human-readable label for each of the two gam action words this tool ever
-# passes around, used to build screen titles/button text without repeating
-# the same if/else in five different places.
-_ACTION_LABELS = {
-    "disable": "Disable",
-    "reenable": "Re-enable",
-}
+# The three choices on the Action radio buttons. "deprovision" is only an
+# on-screen choice: the real GAM action word comes from the reason list
+# (actions.DEPROVISION_REASONS) and is worked out by _chosen_action().
+CHOICE_DISABLE = "disable"
+CHOICE_REENABLE = "reenable"
+CHOICE_DEPROVISION = "deprovision"
+
+# Red used for every warning about a permanent action.
+_WARNING_COLOUR = "#B00000"
 
 
 class ChromebookToggleApp(tk.Frame):
 
-    def __init__(self, root, settings_path, log_dir):
+    def __init__(self, root, locations):
         super().__init__(root)
         self.root = root
-        self.settings_path = settings_path
-        self.log_dir = log_dir
+        # locations (paths.Locations) says where settings.ini, the Logs
+        # folder and the per-person state file are - see paths.py for why
+        # the logs may live somewhere other than next to the app.
+        self.locations = locations
+        self.settings_path = locations.settings_path
+        self.log_dir = locations.log_dir
 
         # config.load_settings() never raises - a missing/corrupt
         # settings.ini quietly falls back to sane defaults (see config.py's
         # own docstring), so no try/except is needed around this call.
-        self.settings = config.load_settings(settings_path)
+        self.settings = config.load_settings(self.settings_path)
+
+        # The self-updater's window half (prompts + progress box); all of its
+        # real work lives in the Tk-free, unit-tested update modules.
+        self.updates = update_ui.UpdateController(root, self.settings, locations)
 
         # tk.StringVar objects back the radio buttons and entry fields on
         # the input screen. These are only ever read/written on the main
         # thread (see the module-level Notes above on why).
         self.mode_var = tk.StringVar(value="individual")
-        self.action_var = tk.StringVar(value="disable")
+        self.action_var = tk.StringVar(value=CHOICE_DISABLE)
+        # Which reason is picked in the Deprovision reason list (only used
+        # when the Deprovision choice is selected).
+        self.reason_var = tk.StringVar(value=actions.reason_text(actions.DEFAULT_DEPROVISION_ACTION))
         self.csv_path_var = tk.StringVar(value="")
         self.sheet_url_var = tk.StringVar(value="")
+        self.reason_row = None
 
         # Widget references that need to be reached from other methods
         # (e.g. to disable the Look Up button) - set up in
@@ -137,8 +158,55 @@ class ChromebookToggleApp(tk.Frame):
         self.review_rows = []
 
         self.pack(fill="both", expand=True, padx=10, pady=10)
+        self._build_menu()
         self._check_gam_on_startup()
         self._build_input_screen()
+
+        # The quiet startup check for a newer release: runs a moment after
+        # the window appears so it never delays the first screen, and says
+        # nothing unless an update exists (see update_ui.py).
+        self.root.after(2000, self.updates.auto_check)
+
+    # ------------------------------------------------------------------
+    # Help menu: update check, logs folder, About
+    # ------------------------------------------------------------------
+    def _build_menu(self):
+        menubar = tk.Menu(self.root)
+        help_menu = tk.Menu(menubar, tearoff=False)
+        help_menu.add_command(label="Check for updates now", command=self.updates.check_now)
+        help_menu.add_command(label="Open the logs folder", command=self._open_logs_folder)
+        help_menu.add_separator()
+        help_menu.add_command(label="About " + APP_TITLE, command=self._show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        self.root.config(menu=menubar)
+
+    def _open_logs_folder(self):
+        # Opens the folder the audit logs are written to, creating it first
+        # if no run has made it yet (so the menu item always does something).
+        try:
+            os.makedirs(self.log_dir, exist_ok=True)
+            if sys.platform.startswith("win"):
+                os.startfile(self.log_dir)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", self.log_dir])
+            else:
+                subprocess.Popen(["xdg-open", self.log_dir])
+        except OSError as problem:
+            messagebox.showerror(APP_TITLE, "Could not open the logs folder:\n" + self.log_dir + "\n\n" + str(problem))
+
+    def _show_about(self):
+        # A support-friendly summary: which version, where it reads its
+        # settings, where it writes its logs, and whether Deprovision is on.
+        messagebox.showinfo(
+            "About " + APP_TITLE,
+            APP_TITLE + " " + version.APP_VERSION + "\n\n"
+            "A point-and-click window for disabling, re-enabling and (when an "
+            "administrator allows it) deprovisioning Chromebooks through GAM.\n\n"
+            "Settings file:  " + self.settings_path + "\n"
+            "Logs folder:    " + self.log_dir + "\n"
+            "GAM program:    " + self.settings["gam_path"] + "\n"
+            "Deprovision:    " + ("available" if self.settings["allow_deprovision"] else "turned off") + "\n\n"
+            + version.releases_url(self.settings["update_repo"]))
 
     # ------------------------------------------------------------------
     # Screen-teardown helpers - used by every screen transition instead of
@@ -212,10 +280,40 @@ class ChromebookToggleApp(tk.Frame):
 
         tk.Label(self, text=APP_TITLE, font=("Segoe UI", 14, "bold")).pack(anchor="w")
 
+        # Safety net: if Deprovision was selected but settings.ini does not
+        # (or no longer) allow it, fall back to the harmless default rather
+        # than leaving a hidden destructive choice selected.
+        if self.action_var.get() == CHOICE_DEPROVISION and not self.settings["allow_deprovision"]:
+            self.action_var.set(CHOICE_DISABLE)
+
         action_frame = ttk.LabelFrame(self, text="Action")
         action_frame.pack(fill="x", pady=(10, 5))
-        ttk.Radiobutton(action_frame, text="Disable", variable=self.action_var, value="disable").pack(side="left", padx=5)
-        ttk.Radiobutton(action_frame, text="Re-enable", variable=self.action_var, value="reenable").pack(side="left", padx=5)
+        choices = ttk.Frame(action_frame)
+        choices.pack(fill="x")
+        ttk.Radiobutton(choices, text="Disable", variable=self.action_var, value=CHOICE_DISABLE,
+                        command=self._refresh_reason_row).pack(side="left", padx=5)
+        ttk.Radiobutton(choices, text="Re-enable", variable=self.action_var, value=CHOICE_REENABLE,
+                        command=self._refresh_reason_row).pack(side="left", padx=5)
+        if self.settings["allow_deprovision"]:
+            # Only offered when an administrator has switched it on in
+            # settings.ini (allow_deprovision = true). Deprovisioning cannot
+            # be undone, so for everyone else the choice simply is not here.
+            ttk.Radiobutton(choices, text="Deprovision (permanent)", variable=self.action_var,
+                            value=CHOICE_DEPROVISION, command=self._refresh_reason_row).pack(side="left", padx=5)
+
+        # The reason row is built every time but only SHOWN while the
+        # Deprovision choice is selected (see _refresh_reason_row()).
+        self.reason_row = ttk.Frame(action_frame)
+        ttk.Label(self.reason_row, text="Reason:").pack(side="left", padx=5)
+        ttk.Combobox(
+            self.reason_row, textvariable=self.reason_var, state="readonly", width=38,
+            values=[text for _word, text in actions.DEPROVISION_REASONS],
+        ).pack(side="left", padx=5)
+        tk.Label(
+            self.reason_row, fg=_WARNING_COLOUR,
+            text="PERMANENT - the device must be wiped and re-enrolled to be managed again.",
+        ).pack(side="left", padx=5)
+        self._refresh_reason_row()
 
         mode_frame = ttk.LabelFrame(self, text="Input Method")
         mode_frame.pack(fill="x", pady=5)
@@ -242,6 +340,26 @@ class ChromebookToggleApp(tk.Frame):
             # disabling the button here means the failure is visible before
             # the user wastes time filling in serials/a CSV/a URL first.
             self.lookup_button.configure(state="disabled")
+
+    def _refresh_reason_row(self):
+        # Shows the Deprovision reason list (and its permanence warning) only
+        # while the Deprovision choice is selected.
+        if self.reason_row is None:
+            return
+        if self.action_var.get() == CHOICE_DEPROVISION:
+            self.reason_row.pack(fill="x", pady=(2, 4))
+        else:
+            self.reason_row.pack_forget()
+
+    def _chosen_action(self):
+        # The exact GAM action word for what is selected on screen: "disable",
+        # "reenable", or - for Deprovision - the word for the reason picked
+        # in the list. Called on the main thread only (it reads tk
+        # variables), before any background thread starts.
+        choice = self.action_var.get()
+        if choice == CHOICE_DEPROVISION:
+            return actions.action_for_reason_text(self.reason_var.get())
+        return choice
 
     def _refresh_input_widgets(self):
         # Rebuild only the input-method-specific widgets, not the whole
@@ -311,7 +429,17 @@ class ChromebookToggleApp(tk.Frame):
         # module-level Notes on why background code never touches tk
         # widgets/variables directly.
         mode = self.mode_var.get()
-        action = self.action_var.get()
+        action = self._chosen_action()
+
+        # Second line of defence behind the hidden radio button: a permanent
+        # action is refused outright unless settings.ini allows it, whatever
+        # state the screen is in.
+        if actions.is_deprovision(action) and not self.settings["allow_deprovision"]:
+            messagebox.showerror(
+                APP_TITLE,
+                "Deprovisioning is turned off on this PC. An administrator can turn it on by "
+                "setting allow_deprovision = true in:\n" + self.settings_path)
+            return
 
         try:
             if mode == "individual":
@@ -423,8 +551,19 @@ class ChromebookToggleApp(tk.Frame):
         self.review_rows = review_rows
         self._clear_screen()
 
-        action_label = _ACTION_LABELS[action]
-        tk.Label(self, text=action_label + " - Review", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        action_label = actions.label(action)
+        destructive = actions.is_deprovision(action)
+        title_options = {"fg": _WARNING_COLOUR} if destructive else {}
+        tk.Label(self, text=action_label + " - Review", font=("Segoe UI", 14, "bold"),
+                 **title_options).pack(anchor="w")
+        if destructive:
+            tk.Label(
+                self, fg=_WARNING_COLOUR, wraplength=620, justify="left",
+                text="PERMANENT: deprovisioned devices are removed from management and must be "
+                     "wiped and re-enrolled to be managed again. Check every serial below before "
+                     "you continue. (If a device should also be wiped, do that BEFORE "
+                     "deprovisioning - a deprovisioned device no longer takes remote commands.)",
+            ).pack(anchor="w", pady=(4, 0))
 
         tree = ttk.Treeview(self, columns=("status", "will_process"), show="tree headings")
         tree.heading("#0", text="Serial")
@@ -449,9 +588,16 @@ class ChromebookToggleApp(tk.Frame):
         button_row.pack(fill="x", pady=(10, 0))
         ttk.Button(button_row, text="Cancel", command=self._build_input_screen).pack(side="right", padx=(5, 0))
         confirm_state = "normal" if will_process_count > 0 else "disabled"
+        # A permanent action's button says exactly how many devices it will
+        # touch, and (see _on_confirm_list_action) leads to a typed
+        # confirmation rather than going straight ahead.
+        if destructive:
+            confirm_text = "Deprovision %d device(s)..." % will_process_count
+        else:
+            confirm_text = "Confirm - " + action_label
         ttk.Button(
-            button_row, text="Confirm - " + action_label, state=confirm_state,
-            command=lambda: self._on_confirm_list_action(action),
+            button_row, text=confirm_text, state=confirm_state,
+            command=lambda: self._on_confirm_list_action(action, will_process_count),
         ).pack(side="right")
 
     # ------------------------------------------------------------------
@@ -461,19 +607,34 @@ class ChromebookToggleApp(tk.Frame):
     # ------------------------------------------------------------------
     def _show_sheet_confirm_screen(self, action, sheet_url_text):
         self._clear_screen()
-        action_label = _ACTION_LABELS[action]
-        tk.Label(self, text=action_label + " - Confirm Google Sheet", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        action_label = actions.label(action)
+        destructive = actions.is_deprovision(action)
+        title_options = {"fg": _WARNING_COLOUR} if destructive else {}
+        tk.Label(self, text=action_label + " - Confirm Google Sheet", font=("Segoe UI", 14, "bold"),
+                 **title_options).pack(anchor="w")
         tk.Label(
             self,
             text="GAM will read every row's Serial column directly from this sheet "
-                 "and " + action_label.lower() + " each device listed:\n\n" + sheet_url_text,
+                 "and " + actions.verb(action) + " each device listed:\n\n" + sheet_url_text,
             wraplength=550, justify="left",
         ).pack(anchor="w", pady=10)
+        if destructive:
+            # Google Sheet mode cannot show a device list first (GAM reads the
+            # sheet at the moment of confirming), which matters far more for
+            # an action that cannot be undone - so say so, loudly.
+            tk.Label(
+                self, fg=_WARNING_COLOUR, wraplength=550, justify="left",
+                text="PERMANENT, AND THERE IS NO PREVIEW: this tool cannot show you the list of "
+                     "devices before it runs, and deprovisioning cannot be undone. Open the sheet "
+                     "and check every row first. For a list you can review device by device, use "
+                     "the CSV or typed-serials method instead.",
+            ).pack(anchor="w", pady=(0, 10))
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", pady=(10, 0))
         ttk.Button(button_row, text="Cancel", command=self._build_input_screen).pack(side="right", padx=(5, 0))
         ttk.Button(
-            button_row, text="Confirm - " + action_label,
+            button_row,
+            text=("Deprovision..." if destructive else "Confirm - " + action_label),
             command=lambda: self._on_confirm_sheet_action(action, sheet_url_text),
         ).pack(side="right")
 
@@ -481,11 +642,32 @@ class ChromebookToggleApp(tk.Frame):
     # Confirm button handlers - switch to the Working screen immediately,
     # then hand off to a background thread.
     # ------------------------------------------------------------------
-    def _on_confirm_list_action(self, action):
+    def _on_confirm_list_action(self, action, device_count):
+        if actions.is_deprovision(action):
+            # A permanent action never proceeds on a single click: the person
+            # must type the confirmation word. Cancelling here simply leaves
+            # them on the review screen with nothing changed.
+            if not dialogs.ask_typed_confirmation(
+                    self.root, "Confirm deprovisioning",
+                    "You are about to PERMANENTLY deprovision %d device(s) (reason: %s).\n\n"
+                    "This cannot be undone. Each device will have to be wiped and re-enrolled "
+                    "before it can be managed again, and it can change your device license "
+                    "count." % (device_count, actions.reason_text(action)),
+                    "Deprovision permanently"):
+                return
         self._show_working_screen()
         self._run_in_background(lambda: self._do_list_action(action))
 
     def _on_confirm_sheet_action(self, action, sheet_url_text):
+        if actions.is_deprovision(action):
+            if not dialogs.ask_typed_confirmation(
+                    self.root, "Confirm deprovisioning",
+                    "You are about to PERMANENTLY deprovision EVERY device listed in this Google "
+                    "Sheet (reason: %s):\n\n%s\n\nThere is no preview of the list, and this cannot "
+                    "be undone. Each device will have to be wiped and re-enrolled before it can be "
+                    "managed again." % (actions.reason_text(action), sheet_url_text),
+                    "Deprovision permanently"):
+                return
         self._show_working_screen()
         self._run_in_background(lambda: self._do_sheet_action(action, sheet_url_text))
 
@@ -572,7 +754,7 @@ class ChromebookToggleApp(tk.Frame):
             # hand, so they are still shown on the results screen even if
             # the log could not be written.
             log_path, log_error = gam_calls.write_log_or_warning(self.log_dir, action, results)
-            self.root.after(0, lambda: self._show_results_screen(results, log_path, log_error))
+            self.root.after(0, lambda: self._show_results_screen(results, log_path, log_error, action))
         finally:
             # Always clean up the temp CSV, whether everything above
             # succeeded or any step failed and returned early.
@@ -626,9 +808,9 @@ class ChromebookToggleApp(tk.Frame):
     # ------------------------------------------------------------------
     # Screen 3a: results for Individual/CSV modes
     # ------------------------------------------------------------------
-    def _show_results_screen(self, results, log_path, log_error):
+    def _show_results_screen(self, results, log_path, log_error, action):
         self._clear_screen()
-        tk.Label(self, text="Results", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(self, text=actions.label(action) + " - Results", font=("Segoe UI", 14, "bold")).pack(anchor="w")
 
         tree = ttk.Treeview(self, columns=("previous", "new", "result"), show="tree headings")
         tree.heading("#0", text="Serial")
@@ -648,6 +830,14 @@ class ChromebookToggleApp(tk.Frame):
         tk.Label(
             self, text=str(success_count) + " of " + str(len(results)) + " device(s) succeeded.",
         ).pack(anchor="w")
+
+        if actions.is_deprovision(action) and success_count:
+            # What happens next for a device that really was deprovisioned.
+            tk.Label(
+                self, wraplength=550, justify="left",
+                text="Deprovisioned devices are no longer managed. To use one again it must be "
+                     "wiped and re-enrolled in your domain.",
+            ).pack(anchor="w", pady=(5, 0))
 
         if log_error:
             # Softer warning styling than a hard error - the real results

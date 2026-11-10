@@ -21,11 +21,12 @@
 # Notes:
 #   ERROR-HANDLING DESIGN for the "action" parameter used by both functions
 #   below: action is NOT free-text or otherwise untrusted input. Per the
-#   design (see gui.py, a later task), it only ever comes from exactly one
-#   of the GUI's two action radio buttons, whose values are the literal
-#   strings "disable" and "reenable" - the same two keys
-#   device_lookup.ACTION_TARGET_STATUS defines (confirmed by reading that
-#   module directly, not assumed). There is no code path anywhere in this
+#   design (see gui.py), it only ever comes from the GUI's action choices
+#   (Disable, Re-enable, and - only when an administrator has switched it
+#   on - one of the four Deprovision reasons), whose values are the literal
+#   GAM action words defined in actions.py - the same keys
+#   device_lookup.ACTION_TARGET_STATUS (an alias of actions.TARGET_STATUS)
+#   contains. There is no code path anywhere in this
 #   tool's design where a user can type or paste an arbitrary "action"
 #   value. That makes an unrecognized action a programming mistake (a
 #   typo'd literal, or a future caller/task passing the wrong string) -
@@ -67,6 +68,7 @@
 
 from dataclasses import dataclass
 
+from . import actions
 from .device_lookup import ACTION_TARGET_STATUS
 
 
@@ -141,6 +143,23 @@ def build_review(serial_list, looked_up, action):
         # (a human reviews it on the review screen before anything is
         # actually sent to gam).
         current_status = info.get("status", "")
+
+        # A deprovisioned device is no longer managed by Google Workspace, so
+        # it cannot be disabled or re-enabled - there is nothing left to
+        # change. Skip it with a plain reason rather than sending a command
+        # that can only fail. (Asking to deprovision an already-deprovisioned
+        # device is handled by the "Already ..." check just below instead.)
+        if (current_status == actions.DEPROVISIONED_STATUS
+                and not actions.is_deprovision(action)):
+            rows.append(ReviewRow(
+                serial=serial,
+                found=True,
+                current_status=current_status,
+                will_process=False,
+                skip_reason="Deprovisioned - cannot " + actions.verb(action),
+            ))
+            continue
+
         if current_status == target_status:
             # Already in the state this action would produce - re-running
             # the action would be a no-op gam call at best, so skip it and

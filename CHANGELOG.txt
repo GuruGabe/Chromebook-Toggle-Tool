@@ -71,4 +71,48 @@ CHANGELOG - Chromebook Toggle Tool
     GAMGUI and M365GUI sibling projects - reused here, not re-solved.
     Verified: 0 .enc files in the rebuilt dist\ChromebookToggle\, app still
     launches and renders normally without them.
+
+11-10-2026 - v1.4 Deprovisioning, self-updater and installers
+  - NEW: Deprovision action, OFF by default. Hidden until IT sets
+    allow_deprovision = true in settings.ini (or ticks the box / passes
+    /ALLOWDEPROV=1 to the Windows installer). Works for typed lists, CSV
+    files and Google Sheets. The person picks a reason (retiring, replace with
+    same model, replace with different model, upgrade transfer), sees a red
+    "permanent" review screen, and must type DEPROVISION to continue. GAM is
+    given acknowledge_device_touch_requirement automatically (it refuses
+    without it); devices run one per GAM command. Devices already
+    deprovisioned are skipped for every action. Google Sheet mode is left as
+    it was (no preview) but its deprovision confirmation shows the sheet URL
+    and a loud warning, and also needs the typed word.
+  - NEW: self-updater. Checks GitHub releases once a day (Help > Check for
+    updates now any time), shows the release notes, and asks first. A file is
+    installed only if its SHA-256 equals the "SHA-256 (<file>):" line in the
+    release notes; no published checksum means no update. Downloads are
+    size-capped and only from GitHub (or a same-host custom mirror); archives
+    are extracted with zip-slip / symlink / zip-bomb guards. The new program
+    swaps in the files from the temp folder after the old one exits, keeps
+    settings.ini, Logs and state.ini, rolls back if anything fails, and
+    restarts. No PowerShell is used. Windows Setup installs update by running
+    the new Setup silently; macOS replaces the signature-checked .app; Linux
+    portable folders are swapped in place; .deb/.rpm show the sudo command.
+    check_for_updates = false in settings.ini turns the daily check off.
+  - NEW: installers. Windows Setup.exe (Inno Setup; all-users or just-me,
+    shortcuts, uninstaller, Installed-apps entry, silent switches
+    /GAMPATH /SHEETEMAIL /ALLOWDEPROV=1, never overwrites settings.ini),
+    macOS .dmg (ad-hoc signed and verified), Linux .deb and .rpm, plus the
+    portable zip / tar.gz for each system. GitHub Actions run the tests on
+    every push and build all assets for a release and publish their SHA-256
+    values (see docs/RELEASING.md).
+  - NEW: Help menu (Check for updates now, Open the logs folder, About).
+  - CHANGED: logs and state.ini go next to the program when that folder is
+    writable, otherwise to the person's own data folder (so installs in
+    Program Files or /opt still log). settings.ini is always read from the
+    program's folder; on macOS, where the signed app must not be edited, a
+    copy in ~/Library/Application Support/ChromebookToggle is used if present.
+  - CHANGED: window title shows the version; Build-EXE.bat also copies
+    README.txt beside the EXE; build-app.sh does the same.
+  - 246 automated tests (was 76).
+  - Not verified by the author on real hardware: the macOS and Linux
+    installers and update scripts (built by CI), and a real Deprovision
+    (irreversible).
 ================================================================================

@@ -78,16 +78,17 @@
 
 import json
 
-# GamCommands.txt:2468-2478 <CrOSAction> - disable/reenable are the only two
-# actions this tool exposes to its users; each maps to the device status
-# GAM's own status enum uses for that action's result. Kept as a module-
-# level constant (rather than hardcoded inline elsewhere) so workflow.py
-# (a later task) and this module's own tests reference the exact same
-# mapping.
-ACTION_TARGET_STATUS = {
-    "disable": "DISABLED",
-    "reenable": "ACTIVE",
-}
+from . import actions
+
+# GamCommands.txt <CrOSAction> - each action this tool can run maps to the
+# device status GAM's own status enum uses for that action's result
+# (disable -> DISABLED, reenable -> ACTIVE, every deprovision_* ->
+# DEPROVISIONED). The table itself now lives in actions.py, the one place
+# that defines the actions, so a new action cannot be added here and
+# forgotten there. This name is kept as an alias so workflow.py and the
+# existing tests, which have always read device_lookup.ACTION_TARGET_STATUS,
+# keep working unchanged.
+ACTION_TARGET_STATUS = actions.TARGET_STATUS
 
 
 # ERROR-HANDLING DESIGN for parse_lookup_json() below: per gam_runner.py's

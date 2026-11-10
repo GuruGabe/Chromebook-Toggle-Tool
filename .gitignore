@@ -22,3 +22,11 @@ settings.local.ini
 # include passwords or tokens - never publish this folder.
 .claude/
 CLAUDE.local.md
+
+# Installer / package outputs (built by CI or locally, attached to releases)
+*-Setup.exe
+*.dmg
+*.deb
+*.rpm
+*.tar.gz
+release-notes.md

@@ -120,6 +120,8 @@
 import os
 import subprocess
 
+from . import actions
+
 # GamCommands.txt:2515-2567 <CrOSFieldName> list - these are the fields this
 # tool needs to build a review screen and compare before/after status.
 # Kept as one module-level constant (rather than repeated inline) so the
@@ -224,10 +226,19 @@ def build_csv_action_args(csv_path, action):
     # one-element list), matching what build_lookup_args() above has
     # always done correctly. Do not remove this prefix again without
     # re-verifying against a live (read-only) gam call first.
+    #
+    # DEPROVISIONING (added 11-10-2026): for the four deprovision_* actions
+    # GAM also requires acknowledge_device_touch_requirement after the
+    # action word (GAM wiki, ChromeOS Devices > Deprovisioning: "you must
+    # enter acknowledge_device_touch_requirement"). actions.extra_gam_args()
+    # supplies it for those actions and nothing for disable/reenable. The
+    # "gam csv" loop runs this command once per serial, so each GAM call
+    # touches exactly one device and GAM's default max_to_deprov of 1 is
+    # never exceeded.
     return [
         "csv", csv_path,
         "gam", "update", "cros", CROS_SN_PREFIX, "~Serial", "action", action,
-    ]
+    ] + list(actions.extra_gam_args(action))
 
 
 def build_gsheet_action_args(sheet_acting_email, file_id, gid, action):
@@ -256,10 +267,13 @@ def build_gsheet_action_args(sheet_acting_email, file_id, gid, action):
     # the same way: "cros_sn" inserted immediately before "~Serial" so gam
     # parses the substituted value as a serial number, not a bare
     # (and therefore misinterpreted-as-device-ID) string.
+    #
+    # DEPROVISIONING (added 11-10-2026): same acknowledgement flag as
+    # build_csv_action_args() above, for the same reason.
     return [
         "csv", "gsheet", sheet_acting_email, "id:" + file_id, "id:" + gid,
         "gam", "update", "cros", CROS_SN_PREFIX, "~Serial", "action", action,
-    ]
+    ] + list(actions.extra_gam_args(action))
 
 
 def run_gam(gam_path, args, timeout_seconds=180):

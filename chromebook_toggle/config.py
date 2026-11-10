@@ -3,16 +3,28 @@
 # Script:   config.py
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google Workspace and generalized for public sharing.
 # Created:  08-07-2026
-# Modified: 08-10-2026
-# Version:  1.2
+# Modified: 11-10-2026
+# Version:  1.3
 #
 # Purpose:
-#   Loads and saves the Chromebook Toggle Tool's settings.ini. Holds the two
+#   Loads and saves the Chromebook Toggle Tool's settings.ini. Holds the
 #   values that can legitimately differ per deployed PC or change over time
-#   without needing a rebuild: where gam.exe lives, and which Workspace
-#   identity to read Google Sheets through.
+#   without needing a rebuild:
+#     gam_path            - where gam.exe lives
+#     sheet_acting_email  - which Workspace identity reads Google Sheets
+#     allow_deprovision   - whether the (permanent) Deprovision action is
+#                           offered at all. OFF by default: an administrator
+#                           turns it on for the PCs that should have it.
+#     check_for_updates   - whether the app looks for a newer release by
+#                           itself at startup (at most once a day)
+#     update_repo         - the GitHub owner/repo that publishes releases
+#     update_api_base     - the GitHub API address (only ever changed for a
+#                           mirror or for testing; must be https, or http to
+#                           this same PC)
 #
 # Notes:
+#   Version 1.3 added the last four settings. An older settings.ini that
+#   does not have them keeps working: every missing key gets its default.
 #   If settings.ini is missing, malformed (bad INI syntax), or contains
 #   non-ASCII bytes (e.g. a Notepad-added BOM or a hand-edited smart quote),
 #   sane defaults are used instead of crashing - this covers first run on a
@@ -25,6 +37,8 @@
 import configparser
 import os
 
+from . import version
+
 # Default gam.exe path - matches the existing GAMGUI/district-standard install
 # location. Each deployed PC gets its own local GAM7 install per the design.
 DEFAULT_GAM_PATH = r"C:\GAM7\gam.exe"
@@ -34,7 +48,59 @@ DEFAULT_GAM_PATH = r"C:\GAM7\gam.exe"
 # gsheet: source, since Drive access is per-user, not domain-global.
 DEFAULT_SHEET_ACTING_EMAIL = "gam-admin@example.com"
 
+# Deprovisioning cannot be undone, so it is hidden unless an administrator
+# deliberately switches it on (settings.ini, the installer's checkbox, or
+# the installer's /ALLOWDEPROV=1 switch).
+DEFAULT_ALLOW_DEPROVISION = False
+
+# Looking for a newer release at startup is on by default; a locked-down PC
+# can switch it off.
+DEFAULT_CHECK_FOR_UPDATES = True
+
+# Where releases come from.
+DEFAULT_UPDATE_REPO = version.DEFAULT_UPDATE_REPO
+DEFAULT_UPDATE_API_BASE = "https://api.github.com"
+
 _SECTION = "Settings"
+
+# Spellings of true/false that configparser (and a person editing the file in
+# Notepad) might use.
+_TRUE_WORDS = ("1", "yes", "true", "on")
+_FALSE_WORDS = ("0", "no", "false", "off")
+
+
+def default_settings():
+    # A fresh copy of every setting at its default. A function (not a shared
+    # dict) so no caller can accidentally change the defaults for everyone.
+    return {
+        "gam_path": DEFAULT_GAM_PATH,
+        "sheet_acting_email": DEFAULT_SHEET_ACTING_EMAIL,
+        "allow_deprovision": DEFAULT_ALLOW_DEPROVISION,
+        "check_for_updates": DEFAULT_CHECK_FOR_UPDATES,
+        "update_repo": DEFAULT_UPDATE_REPO,
+        "update_api_base": DEFAULT_UPDATE_API_BASE,
+    }
+
+
+def _read_bool(parser, key, default):
+    # One yes/no setting. A missing key, or a value that is not recognisably
+    # yes or no, gives the default - for allow_deprovision that means a typo
+    # such as "ture" leaves the dangerous action OFF.
+    raw = parser.get(_SECTION, key, fallback=None)
+    if raw is None:
+        return default
+    word = raw.strip().lower()
+    if word in _TRUE_WORDS:
+        return True
+    if word in _FALSE_WORDS:
+        return False
+    return default
+
+
+def _read_text(parser, key, default):
+    # One text setting; an empty value falls back to the default.
+    raw = parser.get(_SECTION, key, fallback=default)
+    return raw.strip() or default
 
 
 def load_settings(settings_path):
@@ -42,10 +108,7 @@ def load_settings(settings_path):
     # still produces a fully usable settings dict. This dict is what gets
     # returned if the file is missing, unreadable, or corrupt - the tool
     # must still start up rather than crash on a bad settings.ini.
-    settings = {
-        "gam_path": DEFAULT_GAM_PATH,
-        "sheet_acting_email": DEFAULT_SHEET_ACTING_EMAIL,
-    }
+    settings = default_settings()
 
     # First-run-on-a-fresh-PC case: no settings.ini has been created yet.
     # This is expected, not an error, so just hand back the defaults.
@@ -80,6 +143,13 @@ def load_settings(settings_path):
         settings["sheet_acting_email"] = parser.get(
             _SECTION, "sheet_acting_email", fallback=DEFAULT_SHEET_ACTING_EMAIL
         )
+        settings["allow_deprovision"] = _read_bool(
+            parser, "allow_deprovision", DEFAULT_ALLOW_DEPROVISION)
+        settings["check_for_updates"] = _read_bool(
+            parser, "check_for_updates", DEFAULT_CHECK_FOR_UPDATES)
+        settings["update_repo"] = _read_text(parser, "update_repo", DEFAULT_UPDATE_REPO)
+        settings["update_api_base"] = _read_text(
+            parser, "update_api_base", DEFAULT_UPDATE_API_BASE)
     # If the [Settings] section itself is absent (e.g. someone hand-edited
     # the file down to nothing but comments), settings stays at the
     # all-defaults dict built at the top of the function.
@@ -91,9 +161,18 @@ def save_settings(settings_path, settings):
     # Any key the caller did not supply falls back to the module default so
     # save_settings() never writes a blank/missing value to disk.
     parser = configparser.ConfigParser()
+    # Start from the defaults and lay the caller's values over them, writing
+    # yes/no settings as the words "true"/"false" so the file stays readable
+    # by a person.
+    merged = default_settings()
+    merged.update(settings)
     parser[_SECTION] = {
-        "gam_path": settings.get("gam_path", DEFAULT_GAM_PATH),
-        "sheet_acting_email": settings.get("sheet_acting_email", DEFAULT_SHEET_ACTING_EMAIL),
+        "gam_path": str(merged["gam_path"]),
+        "sheet_acting_email": str(merged["sheet_acting_email"]),
+        "allow_deprovision": "true" if merged["allow_deprovision"] else "false",
+        "check_for_updates": "true" if merged["check_for_updates"] else "false",
+        "update_repo": str(merged["update_repo"]),
+        "update_api_base": str(merged["update_api_base"]),
     }
 
     try:

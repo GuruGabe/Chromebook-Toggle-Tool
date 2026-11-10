@@ -153,5 +153,70 @@ class TestConfig(unittest.TestCase):
             self.assertIn(settings_path, str(raised.exception))
 
 
+class TestUpdateAndDeprovisionSettings(unittest.TestCase):
+    # Added with config.py 1.3: allow_deprovision, check_for_updates,
+    # update_repo, update_api_base. The rule that matters most: a missing,
+    # blank or garbled value must fall back to the SAFE default - above all,
+    # a typo must never switch the permanent Deprovision action on.
+
+    def _load(self, ini_text):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = os.path.join(tmp_dir, "settings.ini")
+            with open(path, "w", encoding="ascii") as handle:
+                handle.write(ini_text)
+            return config.load_settings(path)
+
+    def test_defaults_are_the_safe_ones(self):
+        settings = config.default_settings()
+        self.assertFalse(settings["allow_deprovision"])
+        self.assertTrue(settings["check_for_updates"])
+        self.assertEqual(settings["update_repo"], "GuruGabe/Chromebook-Toggle-Tool")
+        self.assertEqual(settings["update_api_base"], "https://api.github.com")
+
+    def test_an_old_settings_file_without_the_new_keys_still_loads(self):
+        settings = self._load("[Settings]\ngam_path = D:\\gam.exe\n")
+        self.assertEqual(settings["gam_path"], "D:\\gam.exe")
+        self.assertFalse(settings["allow_deprovision"])
+        self.assertTrue(settings["check_for_updates"])
+
+    def test_allow_deprovision_accepts_the_usual_spellings_of_yes(self):
+        for word in ("true", "True", "YES", "1", "on", " true "):
+            settings = self._load("[Settings]\nallow_deprovision = " + word + "\n")
+            self.assertTrue(settings["allow_deprovision"], word)
+
+    def test_allow_deprovision_typo_leaves_it_off(self):
+        for word in ("ture", "enable", "", "maybe"):
+            settings = self._load("[Settings]\nallow_deprovision = " + word + "\n")
+            self.assertFalse(settings["allow_deprovision"], word)
+
+    def test_check_for_updates_can_be_switched_off(self):
+        for word in ("false", "no", "0", "off"):
+            settings = self._load("[Settings]\ncheck_for_updates = " + word + "\n")
+            self.assertFalse(settings["check_for_updates"], word)
+
+    def test_blank_text_settings_fall_back_to_their_defaults(self):
+        settings = self._load("[Settings]\nupdate_repo =\nupdate_api_base =   \n")
+        self.assertEqual(settings["update_repo"], config.DEFAULT_UPDATE_REPO)
+        self.assertEqual(settings["update_api_base"], config.DEFAULT_UPDATE_API_BASE)
+
+    def test_custom_repo_is_read(self):
+        settings = self._load("[Settings]\nupdate_repo = someone/fork\n")
+        self.assertEqual(settings["update_repo"], "someone/fork")
+
+    def test_save_then_load_round_trips_every_setting(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = os.path.join(tmp_dir, "settings.ini")
+            wanted = {
+                "gam_path": "E:\\gam\\gam.exe",
+                "sheet_acting_email": "someone@example.com",
+                "allow_deprovision": True,
+                "check_for_updates": False,
+                "update_repo": "someone/fork",
+                "update_api_base": "https://api.github.com",
+            }
+            config.save_settings(path, wanted)
+            self.assertEqual(config.load_settings(path), wanted)
+
+
 if __name__ == "__main__":
     unittest.main()
