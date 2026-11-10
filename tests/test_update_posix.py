@@ -124,6 +124,9 @@ class TestScriptsWithBash(unittest.TestCase):
         put(os.path.join(install, "settings.ini"), "MY SETTINGS")
         put(os.path.join(install, "Logs", "run.csv"), "MY LOG")
         put(os.path.join(new, "ChromebookToggle"), "#!/bin/sh\necho RELAUNCHED > " + _bash_path(marker) + "\n")
+        # A real extracted program is executable; files written by a test are
+        # not (Windows hides the difference, Linux and macOS do not).
+        os.chmod(os.path.join(new, "ChromebookToggle"), 0o755)
         put(os.path.join(new, "_internal", "new.txt"), "new")
         put(os.path.join(new, "settings.ini"), "SHIPPED DEFAULT")
         os.makedirs(work)

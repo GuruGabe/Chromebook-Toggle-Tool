@@ -169,8 +169,32 @@ def wait_for_pid_exit(pid, timeout=90, sleep=time.sleep):
             return True
         except PermissionError:
             pass
+        else:
+            # The process still has an entry, but a "zombie" (finished, waiting
+            # for its parent to collect it) is already gone for our purposes.
+            if _is_zombie(pid):
+                return True
         sleep(0.5)
     return False
+
+
+def _is_zombie(pid):
+    # True if 'pid' has finished but has not been collected by its parent yet.
+    # Linux reads /proc; other Unix systems (macOS) ask 'ps'. Any problem
+    # answers False, which just means "keep waiting".
+    try:
+        with open("/proc/%d/stat" % pid, encoding="ascii", errors="replace") as handle:
+            # Format: pid (name) state ... - the name may contain spaces, so
+            # take what follows the LAST closing parenthesis.
+            return handle.read().rsplit(")", 1)[1].split()[0] == "Z"
+    except (OSError, IndexError):
+        pass
+    try:
+        out = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True,
+                             text=True, timeout=5)
+        return out.stdout.strip().startswith("Z")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
 
 
 def _wait_windows(pid, timeout):
