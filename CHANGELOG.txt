@@ -115,4 +115,24 @@ CHANGELOG - Chromebook Toggle Tool
   - Not verified by the author on real hardware: the macOS and Linux
     installers and update scripts (built by CI), and a real Deprovision
     (irreversible).
+
+11-10-2026 - v1.5 GAM sign-in window
+  - NEW: GAM > "GAM sign-in (renew Google sign-in)..." opens a window that
+    shows who GAM is signed in as (read-only "gam oauth info") and runs
+    "gam oauth update" or "gam oauth create" in GAM's own window, so people
+    without a command line or PowerShell can renew GAM's Google sign-in
+    themselves. Ported from the sibling GAMGUI project's Set up GAM window.
+  - NEW: when a lookup fails with a sign-in message (Reauthentication is
+    needed, invalid_grant, No Client Access allowed, no scopes authorized),
+    the error box offers to open that window. A wrong-user "invalid_grant:
+    Invalid email or User ID" is not treated as a sign-in problem.
+  - Checked against a real GAM 7.51.00: with no sign-in, "oauth info" exits 51
+    ("Does not exist"), "oauth update" refuses, and ordinary commands print
+    "ERROR: No Client Access allowed" - so the window offers "First-time
+    sign-in" (create) when there is no sign-in file and Renew (update)
+    otherwise.
+  - If an administrator has switched off the Windows Command Prompt
+    (DisableCMD policy), gam.exe is started in its own console directly
+    instead of through "cmd /k".
+  - 278 automated tests (was 248).
 ================================================================================

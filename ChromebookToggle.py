@@ -4,7 +4,7 @@
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google Workspace and generalized for public sharing.
 # Created:  08-10-2026
 # Modified: 11-10-2026
-# Version:  1.4
+# Version:  1.5
 #
 # Purpose:
 #   Entry point for the Chromebook Toggle Tool. Creates the Tk root window

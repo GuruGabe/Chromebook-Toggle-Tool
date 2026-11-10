@@ -76,8 +76,8 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import (actions, config, dialogs, gam_calls, gam_runner, serials, sheet_url,
-               update_ui, version)
+from . import (actions, config, dialogs, gam_calls, gam_runner, gam_signin, serials,
+               sheet_url, signin_ui, update_ui, version)
 
 # Shown as the messagebox title and the window title, so every dialog this
 # tool pops up is clearly identifiable to whoever is looking at the screen.
@@ -114,6 +114,10 @@ class ChromebookToggleApp(tk.Frame):
         # The self-updater's window half (prompts + progress box); all of its
         # real work lives in the Tk-free, unit-tested update modules.
         self.updates = update_ui.UpdateController(root, self.settings, locations)
+
+        # The "GAM sign-in" window (renew GAM's Google sign-in without a
+        # command line) - see signin_ui.py / gam_signin.py.
+        self.signin = signin_ui.SigninController(root, self.settings)
 
         # tk.StringVar objects back the radio buttons and entry fields on
         # the input screen. These are only ever read/written on the main
@@ -172,6 +176,9 @@ class ChromebookToggleApp(tk.Frame):
     # ------------------------------------------------------------------
     def _build_menu(self):
         menubar = tk.Menu(self.root)
+        gam_menu = tk.Menu(menubar, tearoff=False)
+        gam_menu.add_command(label="GAM sign-in (renew Google sign-in)...", command=self.signin.open)
+        menubar.add_cascade(label="GAM", menu=gam_menu)
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Check for updates now", command=self.updates.check_now)
         help_menu.add_command(label="Open the logs folder", command=self._open_logs_folder)
@@ -895,5 +902,17 @@ class ChromebookToggleApp(tk.Frame):
         self.root.after(0, lambda: self._show_error_and_reset(message))
 
     def _show_error_and_reset(self, message):
-        messagebox.showerror(APP_TITLE, message)
+        if gam_signin.signin_can_fix(message):
+            # GAM's own sign-in is missing or expired. The person usually
+            # cannot run "gam oauth update" by hand, so offer the window that
+            # does it for them.
+            if messagebox.askyesno(
+                    APP_TITLE,
+                    message + "\n\nThis looks like a GAM sign-in problem. Open the GAM sign-in "
+                    "window to fix it now?"):
+                self._build_input_screen()
+                self.signin.open()
+                return
+        else:
+            messagebox.showerror(APP_TITLE, message)
         self._build_input_screen()

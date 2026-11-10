@@ -30,10 +30,10 @@
 ; The three settings switches only WRITE a value when given; leaving them off
 ; on an upgrade leaves whatever is already in settings.ini alone.
 ;
-; The version is injected by the build:  iscc /DMyAppVersion=1.4 chromebooktoggle.iss
+; The version is injected by the build:  iscc /DMyAppVersion=1.5 chromebooktoggle.iss
 ; The [Files] source is dist\ChromebookToggle, so run Build-EXE.bat (or the CI
 ; build) first. Compile from the repo root:
-;   iscc /DMyAppVersion=1.4 installer\chromebooktoggle.iss
+;   iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
 ; =============================================================================
 
 #ifndef MyAppVersion

@@ -1,5 +1,5 @@
 ================================================================================
-  Chromebook Toggle Tool - README                              (version 1.4)
+  Chromebook Toggle Tool - README                              (version 1.5)
 ================================================================================
 
 1. WHAT THIS PROGRAM DOES
@@ -22,7 +22,9 @@ something looks wrong. For the "Google Sheet" method, GAM reads the sheet
 directly when you confirm, so there is no device-by-device preview - double
 check the sheet itself before confirming.
 
-The program also keeps itself up to date (see section 3, "UPDATING").
+The program also keeps itself up to date (see section 3, "UPDATING"), and it
+can renew GAM's Google sign-in for you (see "RENEWING GAM'S SIGN-IN" in
+section 3), so nobody needs a command line to run "gam oauth update".
 
 The actions are:
   - Disable     - marks the device DISABLED in Google Workspace.
@@ -136,10 +138,39 @@ Nothing else is done to a Chromebook, a user account, or an OU.
     Version 1.3 and earlier have no updater: install 1.4 or newer by hand once.
     To stop the daily check, set check_for_updates = false in settings.ini.
 
+  RENEWING GAM'S SIGN-IN (no command line needed)
+    GAM keeps its own Google sign-in. When it expires GAM prints messages such
+    as "Reauthentication is needed", "invalid_grant" or "No Client Access
+    allowed". Normally you would run "gam oauth update" in a command line.
+    This program does it for you:
+      - When a lookup fails for that reason, the error box asks whether to
+        open the GAM sign-in window. Answer Yes.
+      - Or choose GAM > "GAM sign-in (renew Google sign-in)..." in the menu bar.
+    The window shows who GAM is signed in as. Then:
+      1. Click "Renew sign-in (gam oauth update)". (If GAM has no sign-in at
+         all yet, click "First-time sign-in (gam oauth create)" instead - the
+         window enables the right button for you.)
+      2. A command window and your web browser open. In the browser, sign in
+         with the GAM administrator account and click Allow.
+      3. If the command window shows a numbered list of permissions, type c
+         and press Enter to keep what is already selected.
+      4. When GAM says the authentication flow has completed, go back and
+         click "Check again".
+    The optional email box fills in the administrator for you; leave it
+    alone unless IT tells you otherwise.
+    If the Windows Command Prompt is switched off on this PC, the program
+    starts gam.exe in its own window instead (that window closes by itself
+    when GAM is done - use "Check again" to see the result). If no terminal
+    program is found (some Linux setups), the window shows the exact command
+    for IT to run.
+    This only renews the sign-in. It cannot create GAM's Google Cloud project
+    ("gam create project"): if GAM says a client secrets file is missing, IT
+    must set GAM up first.
+
   BUILDING IT YOURSELF (maintainer use only)
     Windows: run Build-EXE.bat (needs Python 3.10+ and PyInstaller). To also
     make the Setup.exe install Inno Setup 6 and run, from the repository
-    folder:   iscc /DMyAppVersion=1.4 installer\chromebooktoggle.iss
+    folder:   iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
     macOS/Linux: ./build-app.sh, then installer/build-macos-dmg.sh <version> or
     installer/build-linux-packages.sh <version>. Releases are normally built
     on GitHub (docs\RELEASING.md).
@@ -304,6 +335,11 @@ Nothing else is done to a Chromebook, a user account, or an OU.
       Fix: install/verify GAM7 on this PC, or edit settings.ini's gam_path
       to point at the correct location, then restart the tool.
 
+  GAM says "Reauthentication is needed", "invalid_grant" or "No Client Access
+  allowed":
+      - GAM's Google sign-in expired or is missing. Use GAM > "GAM sign-in" in
+        the menu bar (see section 3, RENEWING GAM'S SIGN-IN).
+
   There is no Deprovision choice in the window:
       - That is the default. See allow_deprovision in section 4.
 
@@ -359,6 +395,10 @@ Nothing else is done to a Chromebook, a user account, or an OU.
   - This tool does not enforce any campus, building, or organizational-unit
     restriction on who can be changed.
   - Deprovision is not reversible, and this tool has no "undo" for it.
+  - The GAM sign-in window renews or creates GAM's sign-in only. It cannot
+    create the Google Cloud project, and it needs a web browser on the PC.
+    It was checked against a real GAM for status reading and command
+    building; the full browser sign-in itself is GAM's own (unchanged) flow.
   - There is no shared or network copy of the log files.
   - Google Sheet mode does not write a structured CSV log entry.
   - Linux .deb/.rpm installs cannot update themselves silently, because they

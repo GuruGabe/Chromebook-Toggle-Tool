@@ -1,6 +1,6 @@
 # Chromebook Toggle Tool - Development Notes
 
-## Status (v1.4)
+## Status (v1.5)
 
 - Small Python/tkinter application, standard library only, packaged with
   PyInstaller for Windows, macOS and Linux.
@@ -11,6 +11,10 @@
   (also set by the Windows installer's tick-box or `/ALLOWDEPROV=1`). It is
   permanent, so it needs a reason, a red review screen and a typed
   confirmation word; Sheet mode (no preview) shows the sheet URL and warns.
+- GAM sign-in window (`gam_signin.py`, `signin_ui.py`): GAM menu; runs
+  `gam oauth update` / `oauth create` in GAM's own window and reads
+  `gam oauth info`, so people without a command line can renew GAM's sign-in.
+  Offered automatically when a lookup fails with a sign-in error.
 - Self-updater (`updater.py`, `update_apply.py`, `update_flow.py`,
   `update_posix.py`, `update_ui.py`): checks GitHub releases once a day,
   refuses any download whose SHA-256 is not published in the release notes,

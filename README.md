@@ -72,6 +72,10 @@ running it to type a GAM command or know GAM exists.
   screen, and must type the word `DEPROVISION` before the button works. In
   Google Sheet mode there is no preview, so the confirmation shows the sheet's
   address and warns about that loudly.
+- **Renews GAM's sign-in for you.** If GAM says it needs you to sign in
+  again, the **GAM** menu opens a window that runs `gam oauth update` (or
+  `oauth create`) - no command line or PowerShell needed. See
+  [Renewing GAM's sign-in](#renewing-gams-sign-in-no-command-line-needed).
 - **Updates itself.** The app checks GitHub once a day for a newer release
   and offers to install it. Nothing is installed unless the download matches
   the SHA-256 checksum published in the release notes.
@@ -166,6 +170,43 @@ Try Individual mode with one real serial number first, confirm the review
 screen shows accurate data, and cancel out before confirming anything - a
 safe way to check everything is wired up correctly before running a real
 action.
+
+---
+
+## Renewing GAM's sign-in (no command line needed)
+
+GAM keeps its own Google sign-in, and it sometimes needs renewing - GAM then
+says things like `Reauthentication is needed`, `invalid_grant` or `No Client
+Access allowed`. Normally you fix that by running `gam oauth update` in a
+command line. This tool does it for you, so people without access to a command
+line or PowerShell can still get going again:
+
+- **Automatically:** when a lookup fails because of a sign-in problem, the
+  error box asks *Open the GAM sign-in window to fix it now?*
+- **Any time:** choose **GAM -> GAM sign-in (renew Google sign-in)...** in the
+  menu bar.
+
+The window shows who GAM is currently signed in as (it runs the read-only
+`gam oauth info`). Click **Renew sign-in** to run `gam oauth update`, or
+**First-time sign-in** to run `gam oauth create` when GAM has no sign-in yet.
+GAM opens in its own window and your web browser opens too:
+
+1. In the browser, sign in with the GAM administrator account and click
+   **Allow**.
+2. If GAM's window shows a numbered list of permissions, type `c` and press
+   Enter to keep what is already selected.
+3. When GAM says the authentication flow has completed, go back to the sign-in
+   window and click **Check again**.
+
+If the Windows Command Prompt is switched off on the PC (the "Prevent access to
+the command prompt" policy), the tool starts `gam.exe` in its own window
+instead, so this still works; that window closes by itself when GAM is done, so
+use **Check again** to see the result. If no terminal program can be found (some
+Linux setups), the window shows the exact command for IT to run.
+
+This renews the sign-in only. It cannot create GAM's Google Cloud project
+(`gam create project`) - if GAM says a client-secrets file is missing, IT must
+set GAM up first (see Step 1 above).
 
 ---
 
@@ -340,15 +381,15 @@ The installers are built from the one-folder app above:
   (`winget install JRSoftware.InnoSetup`), run `Build-EXE.bat`, then from the
   repository folder:
   ```bat
-  iscc /DMyAppVersion=1.4 installer\chromebooktoggle.iss
+  iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
   ```
-  This writes `ChromebookToggle-1.4-Setup.exe` in the repository folder. Use the
+  This writes `ChromebookToggle-1.5-Setup.exe` in the repository folder. Use the
   number in `chromebook_toggle/version.py`.
-- **macOS .dmg** - after `./build-app.sh`: `bash installer/build-macos-dmg.sh 1.4`
+- **macOS .dmg** - after `./build-app.sh`: `bash installer/build-macos-dmg.sh 1.5`
   (stamps the version, re-signs the app ad-hoc, verifies it, writes the .dmg).
 - **Linux .deb and .rpm** - after `./build-app.sh`, with
   [fpm](https://fpm.readthedocs.io/) installed (`gem install fpm`):
-  `bash installer/build-linux-packages.sh 1.4`.
+  `bash installer/build-linux-packages.sh 1.5`.
 
 Releases are normally built by GitHub Actions on all three systems at once -
 see [docs/RELEASING.md](docs/RELEASING.md).
@@ -390,6 +431,7 @@ xattr -dr com.apple.quarantine /Applications/ChromebookToggle.app
 | No Deprovision choice in the window | Deprovision is off by default. See [Turning on Deprovision](#turning-on-deprovision). |
 | "cannot update itself" | The copy is run from source, or sits in a folder the app is not allowed to change. Download the new release from the Releases page. |
 | "no published checksum" when updating | The release notes lack a `SHA-256 (<file>):` line for your file, so the app will not install it. Download it by hand from the Releases page. |
+| "Reauthentication is needed", "invalid_grant" or "No Client Access allowed" | GAM's Google sign-in expired or is missing. Use **GAM -> GAM sign-in** in the menu bar (see [Renewing GAM's sign-in](#renewing-gams-sign-in-no-command-line-needed)). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
 | `Tcl data directory _tcl_data not found` (building yourself) | Run `extract_tcl.py` before PyInstaller, or just use `Build-EXE.bat`. |
 
