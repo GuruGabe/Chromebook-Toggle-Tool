@@ -111,7 +111,7 @@ CHANGELOG - Chromebook Toggle Tool
     copy in ~/Library/Application Support/ChromebookToggle is used if present.
   - CHANGED: window title shows the version; Build-EXE.bat also copies
     README.txt beside the EXE; build-app.sh does the same.
-  - 246 automated tests (was 76).
+  - 248 automated tests (was 76).
   - Not verified by the author on real hardware: the macOS and Linux
     installers and update scripts (built by CI), and a real Deprovision
     (irreversible).

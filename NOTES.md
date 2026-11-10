@@ -21,7 +21,7 @@
   (`installer/build-linux-packages.sh`). GitHub Actions
   (`.github/workflows/`) run the tests on every push and build every release
   asset; see `docs/RELEASING.md`.
-- 246 automated unit tests (`python -m unittest discover -s tests -t .`),
+- 248 automated unit tests (`python -m unittest discover -s tests -t .`),
   covering every module except the tkinter GUI itself. The updater tests use
   a small local stand-in for GitHub (`tests/helpers.py`) - no real network.
 - Every GAM command this tool builds was checked directly against GAM7's own
