@@ -115,7 +115,7 @@ jobs:
           done
           echo "Missing packages:${MISSING:- none}"
           if [ -n "$MISSING" ]; then
-            for attempt in 1 2 3; do
+            for attempt in 1 2; do
               if [ "$attempt" = 2 ]; then
                 printf 'http://archive.ubuntu.com/ubuntu/\tpriority:1\n' | sudo tee /etc/apt/apt-mirrors.txt
               fi
@@ -123,11 +123,18 @@ jobs:
                  sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::ForceIPv4=true install -y $MISSING; then
                 break
               fi
-              if [ "$attempt" = 3 ]; then echo "apt failed three times"; exit 1; fi
+              if [ "$attempt" = 2 ]; then
+                # Not fatal: the image already has most of what is needed. The
+                # steps below check that tkinter and fpm really work, and fail
+                # clearly if something essential is missing.
+                echo "::warning::apt could not install:$MISSING - carrying on"
+              fi
               sleep 10
             done
           fi
           sudo gem install --no-document fpm
+          fpm --version
+          python -c "import tkinter; print('tkinter OK', tkinter.TkVersion)"
 
       - name: Install PyInstaller
         run: python -m pip install --upgrade pip pyinstaller
