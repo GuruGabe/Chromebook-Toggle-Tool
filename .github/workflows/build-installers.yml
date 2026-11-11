@@ -103,8 +103,21 @@ jobs:
       - name: Install tkinter, Xvfb and packaging tools (Linux only)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb ruby ruby-dev rpm build-essential
+          # GitHub's Linux runners sometimes cannot resolve their Azure Ubuntu
+          # mirror (a "Temporary failure resolving" error that has stopped a
+          # release build). Try three times, and from the second try use the
+          # main Ubuntu mirror instead, so a runner hiccup cannot block a release.
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && \
+               sudo apt-get -o Acquire::Retries=3 install -y python3-tk xvfb ruby ruby-dev rpm build-essential; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then echo "apt failed three times"; exit 1; fi
+            if [ "$attempt" = 1 ]; then
+              printf 'http://archive.ubuntu.com/ubuntu/\tpriority:1\n' | sudo tee /etc/apt/apt-mirrors.txt
+            fi
+            sleep 20
+          done
           sudo gem install --no-document fpm
 
       - name: Install PyInstaller
