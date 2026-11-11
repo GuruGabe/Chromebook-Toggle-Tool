@@ -53,6 +53,11 @@ DEFAULT_SHEET_ACTING_EMAIL = "gam-admin@example.com"
 # the installer's /ALLOWDEPROV=1 switch).
 DEFAULT_ALLOW_DEPROVISION = False
 
+# The header GAM gives the serial-number column when it downloads ChromeOS
+# devices to a Sheet or CSV. Google Sheet mode needs the sheet's header to
+# match this exactly; the window lets a person type a different one.
+DEFAULT_SERIAL_COLUMN = "serialNumber"
+
 # Looking for a newer release at startup is on by default; a locked-down PC
 # can switch it off.
 DEFAULT_CHECK_FOR_UPDATES = True
@@ -76,6 +81,7 @@ def default_settings():
         "gam_path": DEFAULT_GAM_PATH,
         "sheet_acting_email": DEFAULT_SHEET_ACTING_EMAIL,
         "allow_deprovision": DEFAULT_ALLOW_DEPROVISION,
+        "serial_column": DEFAULT_SERIAL_COLUMN,
         "check_for_updates": DEFAULT_CHECK_FOR_UPDATES,
         "update_repo": DEFAULT_UPDATE_REPO,
         "update_api_base": DEFAULT_UPDATE_API_BASE,
@@ -147,6 +153,7 @@ def load_settings(settings_path):
             parser, "allow_deprovision", DEFAULT_ALLOW_DEPROVISION)
         settings["check_for_updates"] = _read_bool(
             parser, "check_for_updates", DEFAULT_CHECK_FOR_UPDATES)
+        settings["serial_column"] = _read_text(parser, "serial_column", DEFAULT_SERIAL_COLUMN)
         settings["update_repo"] = _read_text(parser, "update_repo", DEFAULT_UPDATE_REPO)
         settings["update_api_base"] = _read_text(
             parser, "update_api_base", DEFAULT_UPDATE_API_BASE)
@@ -170,6 +177,7 @@ def save_settings(settings_path, settings):
         "gam_path": str(merged["gam_path"]),
         "sheet_acting_email": str(merged["sheet_acting_email"]),
         "allow_deprovision": "true" if merged["allow_deprovision"] else "false",
+        "serial_column": str(merged["serial_column"]),
         "check_for_updates": "true" if merged["check_for_updates"] else "false",
         "update_repo": str(merged["update_repo"]),
         "update_api_base": str(merged["update_api_base"]),

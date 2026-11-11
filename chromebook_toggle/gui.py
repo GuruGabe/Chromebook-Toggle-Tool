@@ -76,7 +76,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import (actions, config, dialogs, gam_calls, gam_runner, gam_signin, serials,
+from . import (actions, config, dialogs, gam_calls, gam_runner, gam_signin, policy, serials,
                sheet_url, signin_ui, update_ui, version)
 
 # Shown as the messagebox title and the window title, so every dialog this
@@ -110,6 +110,10 @@ class ChromebookToggleApp(tk.Frame):
         # settings.ini quietly falls back to sane defaults (see config.py's
         # own docstring), so no try/except is needed around this call.
         self.settings = config.load_settings(self.settings_path)
+        # A machine-wide policy (registry / plist / /etc file, set by an
+        # administrator with --set-deprovision or Group Policy) overrides
+        # settings.ini for the permanent Deprovision action - see policy.py.
+        policy.apply_to_settings(self.settings)
 
         # The self-updater's window half (prompts + progress box); all of its
         # real work lives in the Tk-free, unit-tested update modules.
@@ -129,6 +133,15 @@ class ChromebookToggleApp(tk.Frame):
         self.reason_var = tk.StringVar(value=actions.reason_text(actions.DEFAULT_DEPROVISION_ACTION))
         self.csv_path_var = tk.StringVar(value="")
         self.sheet_url_var = tk.StringVar(value="")
+        # Which column holds the serial numbers. CSV mode: "detect
+        # automatically" or a column from the chosen file. Sheet mode: the
+        # header text GAM must match exactly - GAM's own download header,
+        # serialNumber, unless settings.ini or the person says otherwise.
+        self.csv_column_var = tk.StringVar(value=serials.AUTO_COLUMN)
+        self.csv_columns = []
+        self.sheet_column_var = tk.StringVar(value=self.settings["serial_column"])
+        self.sheet_columns = []
+        self.sheet_column_status = None
         self.reason_row = None
 
         # Widget references that need to be reached from other methods
@@ -212,7 +225,8 @@ class ChromebookToggleApp(tk.Frame):
             "Settings file:  " + self.settings_path + "\n"
             "Logs folder:    " + self.log_dir + "\n"
             "GAM program:    " + self.settings["gam_path"] + "\n"
-            "Deprovision:    " + ("available" if self.settings["allow_deprovision"] else "turned off") + "\n\n"
+            "Deprovision:    " + ("available" if self.settings["allow_deprovision"] else "turned off") +
+            " (set by " + self.settings.get("deprovision_source", "settings.ini") + ")\n\n"
             + version.releases_url(self.settings["update_repo"]))
 
     # ------------------------------------------------------------------
@@ -399,23 +413,50 @@ class ChromebookToggleApp(tk.Frame):
             # reach read_csv_serials().
             ttk.Entry(row, textvariable=self.csv_path_var, state="readonly").pack(side="left", fill="x", expand=True)
             ttk.Button(row, text="Browse...", command=self._browse_csv).pack(side="left", padx=(5, 0))
-            tk.Label(self.input_container, text='File must have a "Serial" or "SerialNumber" column.').pack(anchor="w", pady=(5, 0))
+            column_row = ttk.Frame(self.input_container)
+            column_row.pack(fill="x", pady=(8, 0))
+            ttk.Label(column_row, text="Serial column:").pack(side="left")
+            ttk.Combobox(
+                column_row, textvariable=self.csv_column_var, state="readonly", width=34,
+                values=[serials.AUTO_COLUMN] + self.csv_columns,
+            ).pack(side="left", padx=(6, 0))
+            tk.Label(
+                self.input_container, justify="left", wraplength=550,
+                text="Normally nothing to change: a column named serialNumber, Serial or "
+                     "Serial Number is found automatically. If your file uses a different "
+                     "heading, click Browse and pick the column that holds the serial numbers.",
+            ).pack(anchor="w", pady=(5, 0))
         elif mode == "sheet":
             tk.Label(self.input_container, text="Paste the Google Sheet URL:").pack(anchor="w")
             ttk.Entry(self.input_container, textvariable=self.sheet_url_var).pack(fill="x")
-            # Helper text per the task requirement: show the configured
-            # acting email and remind the user the header must be exactly
-            # "Serial" (not "SerialNumber" - unlike CSV mode, gam reads the
-            # Sheet directly, so this tool's own tolerant CSV header
-            # matching in serials.py never gets a chance to run on it).
+            # GAM reads the Sheet directly, so this tool's tolerant CSV header
+            # matching never gets to run on it: the column name has to match
+            # the sheet's header EXACTLY (GAM compares case-sensitively). The
+            # default is GAM's own download header, serialNumber, and the
+            # person can type another or click Check columns to read the
+            # sheet's real headers.
+            column_row = ttk.Frame(self.input_container)
+            column_row.pack(fill="x", pady=(8, 0))
+            ttk.Label(column_row, text="Serial column:").pack(side="left")
+            suggestions = []
+            for name in (self.sheet_column_var.get(), gam_runner.DEFAULT_SERIAL_COLUMN, "Serial", "SerialNumber"):
+                if name and name not in suggestions:
+                    suggestions.append(name)
+            for name in self.sheet_columns:
+                if name not in suggestions:
+                    suggestions.append(name)
+            ttk.Combobox(column_row, textvariable=self.sheet_column_var, width=30,
+                         values=suggestions).pack(side="left", padx=(6, 6))
+            ttk.Button(column_row, text="Check columns", command=self._check_sheet_columns).pack(side="left")
+            self.sheet_column_status = tk.Label(self.input_container, text="", justify="left", wraplength=550)
+            self.sheet_column_status.pack(anchor="w", pady=(2, 0))
             tk.Label(
                 self.input_container,
-                text='The sheet must have a column with the header exactly "Serial" '
-                     "(this exact spelling only - gam reads the sheet directly, so "
-                     "this tool cannot correct a different header the way it can for "
-                     "an uploaded CSV file), and the sheet must be shared with " +
-                     self.settings["sheet_acting_email"] + " (the Workspace identity "
-                     "this tool uses to read Google Sheets).",
+                text="The serial column's heading in the sheet must match this EXACTLY (capital "
+                     "letters count). GAM's own download of Chromebooks uses serialNumber. "
+                     "Check columns reads the sheet's headings (nothing is changed). The sheet "
+                     "must also be shared with " + self.settings["sheet_acting_email"] +
+                     " (the Workspace identity this tool uses to read Google Sheets).",
                 wraplength=550, justify="left",
             ).pack(anchor="w", pady=(5, 0))
 
@@ -423,6 +464,65 @@ class ChromebookToggleApp(tk.Frame):
         path = filedialog.askopenfilename(title="Select CSV file", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if path:
             self.csv_path_var.set(path)
+            # Offer the file's own column names, and choose the likely serial
+            # column automatically (the person can change it).
+            try:
+                self.csv_columns = serials.read_csv_headers(path)
+            except ValueError as problem:
+                self.csv_columns = []
+                self.csv_column_var.set(serials.AUTO_COLUMN)
+                messagebox.showerror(APP_TITLE, str(problem))
+            else:
+                self.csv_column_var.set(serials.AUTO_COLUMN)
+            self._refresh_input_widgets()
+
+    def _check_sheet_columns(self):
+        # Reads the sheet's column headings (read-only) and offers them in the
+        # Serial column list. Everything tk-related is read here on the main
+        # thread; the GAM call runs in the background.
+        url_text = self.sheet_url_var.get().strip()
+        try:
+            file_id, gid = sheet_url.parse_sheet_url(url_text)
+        except ValueError as problem:
+            messagebox.showwarning(APP_TITLE, "Paste a Google Sheet URL first.\n\n" + str(problem))
+            return
+        ok, message = gam_runner.check_gam_available(self.settings["gam_path"])
+        if not ok:
+            messagebox.showerror(APP_TITLE, message)
+            return
+        preferred = self.sheet_column_var.get()
+        if self.sheet_column_status is not None:
+            self.sheet_column_status.config(text="Reading the sheet's columns...")
+        args = gam_runner.build_gsheet_columns_args(self.settings["sheet_acting_email"], file_id, gid)
+        self._run_in_background(lambda: self._sheet_columns_worker(args, preferred))
+
+    def _sheet_columns_worker(self, args, preferred):
+        # Background thread: runs GAM, then hands the answer to the main thread.
+        result, error = gam_calls.run_gam_or_none(self.settings["gam_path"], args)
+        headers = []
+        if not error:
+            headers = gam_runner.parse_csvtest_headers(result.stdout)
+            if not headers:
+                error = (gam_runner.explain_missing_header(result.stderr) or
+                         ("GAM could not read the sheet:\n\n" + (result.stderr or result.stdout or "(no output)").strip()[:600]))
+        self.root.after(0, lambda: self._show_sheet_columns(headers, error, preferred))
+
+    def _show_sheet_columns(self, headers, error, preferred):
+        if self.sheet_column_status is None or not self.sheet_column_status.winfo_exists():
+            return
+        if error:
+            self.sheet_column_status.config(text=error, fg=_WARNING_COLOUR)
+            return
+        self.sheet_columns = headers
+        guess = serials.pick_serial_column(headers, preferred)
+        if guess:
+            self.sheet_column_var.set(guess)
+        self._refresh_input_widgets()
+        if self.sheet_column_status is not None and self.sheet_column_status.winfo_exists():
+            self.sheet_column_status.config(
+                fg="black", text="Columns in the sheet: " + ", ".join(headers) + (
+                    "\nUsing: " + guess if guess else
+                    "\nNone of these looks like a serial number column - pick one in the list."))
 
     # ------------------------------------------------------------------
     # Look Up Devices button handler - resolves input, then either goes
@@ -445,7 +545,8 @@ class ChromebookToggleApp(tk.Frame):
             messagebox.showerror(
                 APP_TITLE,
                 "Deprovisioning is turned off on this PC. An administrator can turn it on by "
-                "setting allow_deprovision = true in:\n" + self.settings_path)
+                "running the program once with  --set-deprovision on  (or by setting "
+                "allow_deprovision = true in:\n" + self.settings_path + ")")
             return
 
         try:
@@ -464,7 +565,7 @@ class ChromebookToggleApp(tk.Frame):
                 # problem it can hit (missing file, no header, wrong
                 # header) - caught below with one clear message regardless
                 # of which of those it was, per serials.py's own docstring.
-                serial_list = serials.read_csv_serials(path)
+                serial_list = serials.read_csv_serials(path, self.csv_column_var.get())
             else:
                 sheet_url_text = self.sheet_url_var.get().strip()
                 if not sheet_url_text:
@@ -475,6 +576,7 @@ class ChromebookToggleApp(tk.Frame):
                 # parses at all, so a bad paste fails fast with a clear
                 # message instead of only surfacing once gam.exe runs.
                 sheet_url.parse_sheet_url(sheet_url_text)
+                gam_runner.clean_column_name(self.sheet_column_var.get())
                 serial_list = None
         except ValueError as value_error:
             messagebox.showerror(APP_TITLE, str(value_error))
@@ -621,8 +723,9 @@ class ChromebookToggleApp(tk.Frame):
                  **title_options).pack(anchor="w")
         tk.Label(
             self,
-            text="GAM will read every row's Serial column directly from this sheet "
-                 "and " + actions.verb(action) + " each device listed:\n\n" + sheet_url_text,
+            text="GAM will read every row's \"" + self.sheet_column_var.get().strip() +
+                 "\" column directly from this sheet and " + actions.verb(action) +
+                 " each device listed:\n\n" + sheet_url_text,
             wraplength=550, justify="left",
         ).pack(anchor="w", pady=10)
         if destructive:
@@ -676,7 +779,9 @@ class ChromebookToggleApp(tk.Frame):
                     "Deprovision permanently"):
                 return
         self._show_working_screen()
-        self._run_in_background(lambda: self._do_sheet_action(action, sheet_url_text))
+        # Read on the main thread (tk variables), then hand to the thread.
+        column = self.sheet_column_var.get()
+        self._run_in_background(lambda: self._do_sheet_action(action, sheet_url_text, column))
 
     def _show_looking_up_screen(self):
         self._clear_screen()
@@ -780,7 +885,7 @@ class ChromebookToggleApp(tk.Frame):
     # ------------------------------------------------------------------
     # Background thread: Google Sheet confirm -> execute
     # ------------------------------------------------------------------
-    def _do_sheet_action(self, action, sheet_url_text):
+    def _do_sheet_action(self, action, sheet_url_text, column=gam_runner.DEFAULT_SERIAL_COLUMN):
         try:
             # Re-parse the URL for the actual gam call (it was already
             # validated once in _on_look_up_clicked, but parsed again here
@@ -792,15 +897,19 @@ class ChromebookToggleApp(tk.Frame):
             self._show_error_and_return_to_input("Could not read the Google Sheet URL: " + str(value_error))
             return
 
-        result, error = gam_calls.run_gam_or_none(
-            self.settings["gam_path"],
-            gam_runner.build_gsheet_action_args(self.settings["sheet_acting_email"], file_id, gid, action),
-        )
+        try:
+            action_args = gam_runner.build_gsheet_action_args(
+                self.settings["sheet_acting_email"], file_id, gid, action, column)
+        except ValueError as problem:
+            self._show_error_and_return_to_input(str(problem))
+            return
+        result, error = gam_calls.run_gam_or_none(self.settings["gam_path"], action_args)
         if error:
             self._show_error_and_return_to_input(error)
             return
         if result.returncode != 0:
             self._show_error_and_return_to_input(
+                gam_runner.explain_missing_header(result.stderr) or
                 "Running the action failed:\n\n" + (result.stderr or "(gam.exe printed no error output)")
             )
             return

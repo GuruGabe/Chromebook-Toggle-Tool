@@ -27,7 +27,7 @@ class TestCommandBuilders(unittest.TestCase):
             "admin@example.com", "FILEID", "7", "deprovision_same_model_replace")
         self.assertEqual(args, [
             "csv", "gsheet", "admin@example.com", "id:FILEID", "id:7",
-            "gam", "update", "cros", "cros_sn", "~Serial",
+            "gam", "update", "cros", "cros_sn", "~serialNumber",
             "action", "deprovision_same_model_replace",
             "acknowledge_device_touch_requirement",
         ])

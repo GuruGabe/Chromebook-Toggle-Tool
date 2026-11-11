@@ -1,6 +1,6 @@
 # Chromebook Toggle Tool - Development Notes
 
-## Status (v1.5)
+## Status (v1.6)
 
 - Small Python/tkinter application, standard library only, packaged with
   PyInstaller for Windows, macOS and Linux.
@@ -11,6 +11,12 @@
   (also set by the Windows installer's tick-box or `/ALLOWDEPROV=1`). It is
   permanent, so it needs a reason, a red review screen and a typed
   confirmation word; Sheet mode (no preview) shows the sheet URL and warns.
+- Serial column: Google Sheet mode defaults to GAM's own `serialNumber` heading
+  (`serial_column` setting; editable box + read-only Check columns button);
+  CSV mode auto-detects the column or lets the person pick one.
+- Deprovision can be changed after install with `--set-deprovision on|off|clear`
+  (`policy.py`): machine-wide policy (HKLM\SOFTWARE\Policies\ChromebookToggle,
+  macOS plist, /etc file) that overrides settings.ini; Windows self-elevates.
 - GAM sign-in window (`gam_signin.py`, `signin_ui.py`): GAM menu; runs
   `gam oauth update` / `oauth create` in GAM's own window and reads
   `gam oauth info`, so people without a command line can renew GAM's sign-in.

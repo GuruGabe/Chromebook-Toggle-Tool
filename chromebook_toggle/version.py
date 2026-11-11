@@ -24,7 +24,7 @@ APP_NAME = "Chromebook Toggle Tool"
 
 # The version of THIS build. Bump it (and add a CHANGELOG.txt entry) for
 # every release.
-APP_VERSION = "1.5"
+APP_VERSION = "1.6"
 
 # owner/repo on GitHub that publishes releases. This is the default only -
 # settings.ini can override it with update_repo (for a fork or a mirror).

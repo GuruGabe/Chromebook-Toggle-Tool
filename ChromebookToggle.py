@@ -4,7 +4,7 @@
 # Author:   Gabriel Clifton (built with Claude). Originally created for a K-12 Google Workspace and generalized for public sharing.
 # Created:  08-10-2026
 # Modified: 11-10-2026
-# Version:  1.5
+# Version:  1.6
 #
 # Purpose:
 #   Entry point for the Chromebook Toggle Tool. Creates the Tk root window
@@ -47,6 +47,13 @@ def main():
     if "--apply-update" in sys.argv:
         from chromebook_toggle import update_apply
         return update_apply.apply_update_main(sys.argv[1:])
+
+    # Administrator switches for the permanent Deprovision action
+    # (--set-deprovision on|off|clear, --deprovision-status). Also windowless:
+    # they change a machine-wide setting and exit (see policy.py).
+    from chromebook_toggle import policy
+    if policy.is_policy_command(sys.argv):
+        return policy.cli_main(sys.argv, say=policy.make_say(), elevate=policy.elevate_windows)
 
     import tkinter as tk
 

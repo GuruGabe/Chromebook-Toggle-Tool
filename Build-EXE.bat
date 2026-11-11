@@ -89,5 +89,5 @@ IF ERRORLEVEL 1 (
 ECHO.
 ECHO Build complete: dist\ChromebookToggle\  (run ChromebookToggle.exe inside it)
 ECHO Copy the whole dist\ChromebookToggle folder to each target PC, or build the
-ECHO Windows installer from it:  iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
+ECHO Windows installer from it:  iscc /DMyAppVersion=1.6 installer\chromebooktoggle.iss
 ENDLOCAL

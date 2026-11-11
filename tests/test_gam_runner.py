@@ -63,7 +63,7 @@ class TestBuildArgs(unittest.TestCase):
         )
         self.assertEqual(args, [
             "csv", "gsheet", "gam-admin@example.com", "id:1AbCdEf", "id:123",
-            "gam", "update", "cros", "cros_sn", "~Serial", "action", "reenable",
+            "gam", "update", "cros", "cros_sn", "~serialNumber", "action", "reenable",
         ])
 
 

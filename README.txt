@@ -1,5 +1,5 @@
 ================================================================================
-  Chromebook Toggle Tool - README                              (version 1.5)
+  Chromebook Toggle Tool - README                              (version 1.6)
 ================================================================================
 
 1. WHAT THIS PROGRAM DOES
@@ -138,6 +138,32 @@ Nothing else is done to a Chromebook, a user account, or an OU.
     Version 1.3 and earlier have no updater: install 1.4 or newer by hand once.
     To stop the daily check, set check_for_updates = false in settings.ini.
 
+  CHANGING DEPROVISION LATER (no reinstall)
+    An administrator can switch the permanent Deprovision action on or off at
+    any time. Run the installed program once with a switch:
+
+      "C:\Program Files\ChromebookToggle\ChromebookToggle.exe" --set-deprovision on
+      ... --set-deprovision off        turn it off
+      ... --set-deprovision clear      remove the policy; settings.ini decides
+      ... --deprovision-status         show the current setting
+
+    On Windows it asks for administrator approval by itself (the normal
+    prompt) and shows a message when done. The Windows Setup also adds three
+    Start Menu shortcuts: "Administrator - turn Deprovision ON / OFF / remove
+    Deprovision policy". On macOS/Linux, run it with sudo. The change takes
+    effect the next time the program is started.
+    The switch writes one machine-wide setting that only administrators can
+    change, and it OVERRIDES settings.ini:
+      Windows  HKEY_LOCAL_MACHINE\SOFTWARE\Policies\ChromebookToggle
+               value AllowDeprovision (DWORD, 1 = on, 0 = off)
+               - can also be deployed with Group Policy Preferences > Registry
+      macOS    /Library/Preferences/com.gurugabe.chromebooktoggle.plist
+               key AllowDeprovision (boolean)
+      Linux    /etc/chromebooktoggle/policy.ini  [Settings] allow_deprovision
+    A value that is not clearly yes/no is ignored, so a typo can never switch
+    Deprovision on. Help > About shows whether the setting came from the
+    machine policy or settings.ini.
+
   RENEWING GAM'S SIGN-IN (no command line needed)
     GAM keeps its own Google sign-in. When it expires GAM prints messages such
     as "Reauthentication is needed", "invalid_grant" or "No Client Access
@@ -170,7 +196,7 @@ Nothing else is done to a Chromebook, a user account, or an OU.
   BUILDING IT YOURSELF (maintainer use only)
     Windows: run Build-EXE.bat (needs Python 3.10+ and PyInstaller). To also
     make the Setup.exe install Inno Setup 6 and run, from the repository
-    folder:   iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
+    folder:   iscc /DMyAppVersion=1.6 installer\chromebooktoggle.iss
     macOS/Linux: ./build-app.sh, then installer/build-macos-dmg.sh <version> or
     installer/build-linux-packages.sh <version>. Releases are normally built
     on GitHub (docs\RELEASING.md).
@@ -209,16 +235,21 @@ Nothing else is done to a Chromebook, a user account, or an OU.
       kept if you Cancel out of the review screen or switch to a different
       input method and back, so you do not have to retype a long list after
       fixing a typo.
-    - CSV file - click Browse and pick a .csv file. The file must contain a
-      column whose header is either "Serial" or "SerialNumber" - matching is
-      not case-sensitive and ignores stray spaces around the header text.
+    - CSV file - click Browse and pick a .csv file. The column that holds the
+      serial numbers is found automatically: GAM's own header serialNumber, or
+      Serial, Serial Number, Serial_No and similar - matching ignores capital
+      letters, spaces and punctuation. If your file uses some other heading, pick
+      the column in the "Serial column" list after clicking Browse.
       Files saved from Excel (which add a hidden marker at the start of the
       file) are handled automatically.
     - Google Sheet - paste the URL of a Google Sheet. The sheet must have a
-      column with the header spelled EXACTLY "Serial" (not "SerialNumber" or
-      any other variant) - unlike CSV mode, GAM reads the Google Sheet
-      directly when you confirm, so this tool never gets a chance to
-      normalize a differently-spelled header. The sheet must also be shared
+      column whose heading matches the "Serial column" box EXACTLY - capital
+      letters count. The box starts as serialNumber, which is what GAM calls it
+      when it downloads Chromebooks to a sheet; type another heading if yours is
+      different, or click "Check columns" to read the sheet's real headings and
+      pick the right one (nothing is changed). Unlike CSV mode, GAM reads the
+      Google Sheet directly when you confirm, so this tool cannot correct a
+      differently-spelled heading itself. The sheet must also be shared
       (at least view access) with the Workspace account configured as
       sheet_acting_email in settings.ini - GAM reads the sheet as that
       account, not as you.
@@ -246,10 +277,17 @@ Nothing else is done to a Chromebook, a user account, or an OU.
                             and share every Google Sheet you want to read
                             with that same account. Individual-entry and CSV
                             mode do not use this setting at all.
+    - serial_column      - the heading of the serial-number column in a Google
+                            Sheet. Default: serialNumber (GAM's own name for it).
+                            Capital letters count. The window's "Serial column"
+                            box starts with this and can be changed per run.
     - allow_deprovision  - true or false. Default: false. Turns the permanent
                             Deprovision action on. A typo here leaves it OFF.
                             Windows Setup can set it (tick-box, or
-                            /ALLOWDEPROV=1).
+                            /ALLOWDEPROV=1). To change it LATER without
+                            reinstalling, see "CHANGING DEPROVISION LATER" in
+                            section 3 - that machine-wide policy OVERRIDES this
+                            line.
     - check_for_updates  - true or false. Default: true.
     - update_repo        - advanced; the GitHub "owner/name" the updater asks.
                             Only change this for your own fork.
@@ -348,6 +386,12 @@ Nothing else is done to a Chromebook, a user account, or an OU.
       Fix: open the CSV and rename the appropriate column's header to either
       "Serial" or "SerialNumber" (any capitalization is fine), save, and try
       again. Make sure the header row is the very first row in the file.
+
+  Google Sheet mode says: Header "Serial" not found in CSV headers of "...":
+      - The heading in the "Serial column" box does not match the sheet's
+        heading exactly (capital letters count). The message lists the sheet's
+        real columns. Click "Check columns" (or type the right heading) and
+        try again.
 
   Google Sheet mode: the run appears to do nothing, or GAM reports it could
   not find rows/could not access the sheet:

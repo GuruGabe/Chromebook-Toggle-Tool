@@ -210,6 +210,7 @@ class TestUpdateAndDeprovisionSettings(unittest.TestCase):
                 "gam_path": "E:\\gam\\gam.exe",
                 "sheet_acting_email": "someone@example.com",
                 "allow_deprovision": True,
+                "serial_column": "Serial Number",
                 "check_for_updates": False,
                 "update_repo": "someone/fork",
                 "update_api_base": "https://api.github.com",

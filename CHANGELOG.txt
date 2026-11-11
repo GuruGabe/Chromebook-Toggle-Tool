@@ -135,4 +135,32 @@ CHANGELOG - Chromebook Toggle Tool
     (DisableCMD policy), gam.exe is started in its own console directly
     instead of through "cmd /k".
   - 278 automated tests (was 248).
+
+11-11-2026 - v1.6 Serial column choice and changing Deprovision without reinstalling
+  - CHANGED: Google Sheet mode now expects GAM's own default heading,
+    serialNumber, for the serial column (it used to require exactly "Serial").
+    The window has an editable "Serial column" box and a "Check columns"
+    button that reads the sheet's headings (read-only, "gam csvtest gsheet")
+    and picks the likely one; settings.ini has a new serial_column setting
+    for the default. If the heading is wrong, GAM's error ("Header ... not
+    found in CSV headers of ...") is turned into a plain message that lists
+    the sheet's real columns. GAM matches the heading exactly (checked on a
+    real GAM 7.51.00: capital letters count).
+  - CHANGED: CSV mode finds the serial column automatically (serialNumber,
+    Serial, Serial Number, Serial_No ... ignoring case, spaces and
+    punctuation) and has a "Serial column" list, filled when a file is
+    chosen, for files that use some other heading.
+  - NEW: change Deprovision WITHOUT reinstalling. An administrator runs the
+    program with --set-deprovision on|off|clear (and --deprovision-status).
+    It writes a machine-wide policy that overrides settings.ini:
+    HKLM\SOFTWARE\Policies\ChromebookToggle\AllowDeprovision on Windows (also
+    usable from Group Policy), /Library/Preferences/
+    com.gurugabe.chromebooktoggle.plist on macOS, /etc/chromebooktoggle/
+    policy.ini on Linux. Windows asks for administrator approval itself (UAC);
+    macOS/Linux use sudo. The per-user registry is deliberately not used
+    (any user could write it). A policy value that is not clearly yes/no is
+    ignored. The Windows Setup adds three Start Menu shortcuts that run the
+    switch. Help > About shows whether the setting came from the policy or
+    settings.ini.
+  - NEW: 42 more automated tests (320 in total).
 ================================================================================

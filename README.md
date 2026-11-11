@@ -46,11 +46,16 @@ running it to type a GAM command or know GAM exists.
 
 - **Three ways to give it a device list:**
   - Type or paste serial numbers, one per line.
-  - Point it at a CSV file with a `Serial` or `SerialNumber` column
-    (either name, any capitalization).
-  - Paste a Google Sheet URL (the sheet's column header must be spelled
-    exactly `Serial`, and the sheet must be shared with the Google account
-    configured in `settings.ini`).
+  - Point it at a CSV file. The serial column is found automatically (GAM's
+    own `serialNumber`, or `Serial`, `Serial Number` and similar, any
+    capitalization); if your file uses another heading, pick the column in the
+    **Serial column** list after clicking Browse.
+  - Paste a Google Sheet URL. The sheet's serial column must match the
+    **Serial column** box *exactly* - it starts as `serialNumber`, which is
+    what GAM calls it when it downloads Chromebooks to a sheet. Type another
+    heading if yours differs, or click **Check columns** to read the sheet's
+    real headings. The sheet must be shared with the Google account configured
+    in `settings.ini`.
 - **Reviews before it acts.** For individual/CSV input, it looks up every
   device's current status first and shows a table of what will happen -
   including devices that don't exist or are already in the target state,
@@ -148,6 +153,8 @@ uses that.)
   same account (see [What it actually does](#what-it-actually-does)).
   Individual-entry and CSV input don't use this value at all, so you
   can skip this if you'll only ever use those two modes.
+- `serial_column` - the heading of the serial-number column in a Google
+  Sheet; `serialNumber` by default (GAM's own name for it).
 - `allow_deprovision` - `false` by default; see
   [Turning on Deprovision](#turning-on-deprovision).
 - `check_for_updates` - `true` by default; set `false` to stop the daily
@@ -219,8 +226,34 @@ turns it on. Any one of these works:
 
 - **Installer:** tick *Allow the PERMANENT Deprovision action* in the Windows
   Setup wizard, or run Setup silently with `/ALLOWDEPROV=1`.
-- **Any install:** open `settings.ini` and set `allow_deprovision = true`.
-  Set it back to `false` to hide the option again.
+- **Any install, any time (no reinstall):** an administrator runs the program
+  once with a switch, which sets a machine-wide policy:
+
+  ```bat
+  "C:\Program Files\ChromebookToggle\ChromebookToggle.exe" --set-deprovision on
+  ```
+
+  Use `off` to turn it off again, or `clear` to remove the policy so
+  `settings.ini` decides. `--deprovision-status` shows the current setting.
+  On Windows the switch asks for administrator approval itself (the normal
+  prompt); the Setup also puts *Administrator - turn Deprovision ON / OFF /
+  remove policy* shortcuts in the Start Menu folder. On macOS/Linux run it
+  with `sudo`. It takes effect the next time the program starts.
+- **By policy (for Group Policy / management tools):** the switch just writes
+  one setting, so you can set it yourself:
+
+  | System | Where | Value |
+  |--------|-------|-------|
+  | Windows | `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\ChromebookToggle`, value `AllowDeprovision` | DWORD `1` = on, `0` = off |
+  | macOS | `/Library/Preferences/com.gurugabe.chromebooktoggle.plist`, key `AllowDeprovision` | boolean |
+  | Linux | `/etc/chromebooktoggle/policy.ini`, `[Settings]` `allow_deprovision` | `true` / `false` |
+
+  A policy **overrides** `settings.ini`, and only administrators can write it
+  (the per-user registry is deliberately not used, since any user could change
+  it). A value that is not clearly yes or no is ignored, so a typo can never
+  switch Deprovision on.
+- **`settings.ini`:** open it and set `allow_deprovision = true` (off =
+  `false`). This is what the policy overrides.
 
 With it on, the main window gains a third choice. Deprovision always asks for
 a reason, which GAM records in Google:
@@ -381,15 +414,15 @@ The installers are built from the one-folder app above:
   (`winget install JRSoftware.InnoSetup`), run `Build-EXE.bat`, then from the
   repository folder:
   ```bat
-  iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
+  iscc /DMyAppVersion=1.6 installer\chromebooktoggle.iss
   ```
-  This writes `ChromebookToggle-1.5-Setup.exe` in the repository folder. Use the
+  This writes `ChromebookToggle-1.6-Setup.exe` in the repository folder. Use the
   number in `chromebook_toggle/version.py`.
-- **macOS .dmg** - after `./build-app.sh`: `bash installer/build-macos-dmg.sh 1.5`
+- **macOS .dmg** - after `./build-app.sh`: `bash installer/build-macos-dmg.sh 1.6`
   (stamps the version, re-signs the app ad-hoc, verifies it, writes the .dmg).
 - **Linux .deb and .rpm** - after `./build-app.sh`, with
   [fpm](https://fpm.readthedocs.io/) installed (`gem install fpm`):
-  `bash installer/build-linux-packages.sh 1.5`.
+  `bash installer/build-linux-packages.sh 1.6`.
 
 Releases are normally built by GitHub Actions on all three systems at once -
 see [docs/RELEASING.md](docs/RELEASING.md).
@@ -431,6 +464,7 @@ xattr -dr com.apple.quarantine /Applications/ChromebookToggle.app
 | No Deprovision choice in the window | Deprovision is off by default. See [Turning on Deprovision](#turning-on-deprovision). |
 | "cannot update itself" | The copy is run from source, or sits in a folder the app is not allowed to change. Download the new release from the Releases page. |
 | "no published checksum" when updating | The release notes lack a `SHA-256 (<file>):` line for your file, so the app will not install it. Download it by hand from the Releases page. |
+| "Header \"Serial\" not found in CSV headers" (Google Sheet mode) | The sheet's serial column is not called what the **Serial column** box says. Click **Check columns**, or type the exact heading (capital letters count). |
 | "Reauthentication is needed", "invalid_grant" or "No Client Access allowed" | GAM's Google sign-in expired or is missing. Use **GAM -> GAM sign-in** in the menu bar (see [Renewing GAM's sign-in](#renewing-gams-sign-in-no-command-line-needed)). |
 | "Windows protected your PC" on launch | The app isn't code-signed. Click **More info -> Run anyway**. |
 | `Tcl data directory _tcl_data not found` (building yourself) | Run `extract_tcl.py` before PyInstaller, or just use `Build-EXE.bat`. |

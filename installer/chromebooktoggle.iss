@@ -23,6 +23,8 @@
 ;   /ALLUSERS or /CURRENTUSER                  choose the install scope
 ;   /TASKS="deprovision"  or  /ALLOWDEPROV=1   turn the PERMANENT Deprovision
 ;                                              action on (off by default)
+;   (Later, without reinstalling: run the installed program with
+;    --set-deprovision on|off|clear as an administrator.)
 ;   /GAMPATH="C:\GAM7\gam.exe"                 write gam_path
 ;   /SHEETEMAIL="someone@your-domain"          write sheet_acting_email
 ;   /RELAUNCH=1                                start the app afterwards (the
@@ -30,10 +32,10 @@
 ; The three settings switches only WRITE a value when given; leaving them off
 ; on an upgrade leaves whatever is already in settings.ini alone.
 ;
-; The version is injected by the build:  iscc /DMyAppVersion=1.5 chromebooktoggle.iss
+; The version is injected by the build:  iscc /DMyAppVersion=1.6 chromebooktoggle.iss
 ; The [Files] source is dist\ChromebookToggle, so run Build-EXE.bat (or the CI
 ; build) first. Compile from the repo root:
-;   iscc /DMyAppVersion=1.5 installer\chromebooktoggle.iss
+;   iscc /DMyAppVersion=1.6 installer\chromebooktoggle.iss
 ; =============================================================================
 
 #ifndef MyAppVersion
@@ -106,6 +108,13 @@ Filename: "{app}\settings.ini"; Section: "Settings"; Key: "sheet_acting_email"; 
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; For IT: switch the permanent Deprovision action on or off later, without
+; reinstalling. The program asks for administrator approval itself (UAC) and
+; sets a machine-wide policy that overrides settings.ini. "Remove policy"
+; hands the decision back to settings.ini.
+Name: "{group}\Administrator - turn Deprovision ON"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--set-deprovision on"
+Name: "{group}\Administrator - turn Deprovision OFF"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--set-deprovision off"
+Name: "{group}\Administrator - remove Deprovision policy"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--set-deprovision clear"
 
 [Registry]
 ; HKA = HKLM for an all-users install, HKCU for a just-me install. The app's

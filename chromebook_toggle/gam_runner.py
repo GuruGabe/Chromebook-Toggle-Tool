@@ -118,6 +118,7 @@
 #   Google Workspace tenant).
 
 import os
+import re
 import subprocess
 
 from . import actions
@@ -241,7 +242,71 @@ def build_csv_action_args(csv_path, action):
     ] + list(actions.extra_gam_args(action))
 
 
-def build_gsheet_action_args(sheet_acting_email, file_id, gid, action):
+# The column GAM itself calls the serial number when it downloads ChromeOS
+# devices to a Sheet or CSV ("gam print cros ... todrive"). GAM matches a ~Name
+# substitution against the sheet's header EXACTLY (case-sensitive), so this is
+# the default and the person can type a different header.
+DEFAULT_SERIAL_COLUMN = "serialNumber"
+
+
+def clean_column_name(text):
+    # Checks a header name typed by a person before it goes into a GAM command.
+    # It becomes ONE argument ("~" + name), so spaces are fine; what is refused
+    # is an empty name, line breaks and other control characters.
+    name = (text or "").strip()
+    if not name:
+        raise ValueError("Type the name of the sheet column that holds the serial numbers.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+        raise ValueError("The column name contains a character that cannot be used.")
+    return name
+
+
+def build_gsheet_columns_args(sheet_acting_email, file_id, gid):
+    # READ-ONLY: "gam csvtest gsheet ..." makes GAM read the sheet and print its
+    # column headers (and the first few commands it WOULD run) without running
+    # anything. Checked against a real GAM 7.51: output is
+    #   The CSV file (<name>) has the following headers:
+    #     <header>   (one per line, indented)
+    #   Here are the first N commands GAM will run
+    # "gam version" is a harmless stand-in command with no ~column in it.
+    return ["csvtest", "gsheet", sheet_acting_email, "id:" + file_id, "id:" + gid, "gam", "version"]
+
+
+def parse_csvtest_headers(text):
+    # The header names from build_gsheet_columns_args()'s output, in order, or
+    # [] if GAM did not print a header list (an error).
+    headers = []
+    inside = False
+    for line in (text or "").splitlines():
+        if "has the following headers" in line:
+            inside = True
+            continue
+        if not inside:
+            continue
+        if line.startswith("  ") and line.strip():
+            headers.append(line.strip())
+        else:
+            break
+    return headers
+
+
+_MISSING_HEADER = re.compile(r'Header "(.*?)" not found in CSV headers of "(.*?)"')
+
+
+def explain_missing_header(stderr):
+    # GAM's error when the chosen column is not in the sheet is
+    #   ERROR: Header "Serial" not found in CSV headers of "serialNumber,status,..."
+    # (checked live). Returns a plain-English version that names the real
+    # columns, or "" if this is some other error.
+    found = _MISSING_HEADER.search(stderr or "")
+    if not found:
+        return ""
+    return ('The sheet has no column named "%s". Its columns are: %s.\n\nType the right one in '
+            '"Serial column" and try again (the Check columns button lists them).'
+            % (found.group(1), found.group(2).replace(",", ", ")))
+
+
+def build_gsheet_action_args(sheet_acting_email, file_id, gid, action, column=DEFAULT_SERIAL_COLUMN):
     # GamCommands.txt:1399-1405 CSVLoopContent accepts (gsheet <UserGoogleSheet>)
     # GamCommands.txt:827-828 <UserGoogleSheet> ::= <EmailAddress> <DriveFileIDEntity> <SheetEntity>
     # GamCommands.txt:1109-1111 <DriveFileIDEntity> accepts bare id:<DriveFileItem>
@@ -272,7 +337,7 @@ def build_gsheet_action_args(sheet_acting_email, file_id, gid, action):
     # build_csv_action_args() above, for the same reason.
     return [
         "csv", "gsheet", sheet_acting_email, "id:" + file_id, "id:" + gid,
-        "gam", "update", "cros", CROS_SN_PREFIX, "~Serial", "action", action,
+        "gam", "update", "cros", CROS_SN_PREFIX, "~" + clean_column_name(column), "action", action,
     ] + list(actions.extra_gam_args(action))
 
 

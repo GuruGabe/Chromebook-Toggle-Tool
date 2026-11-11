@@ -46,7 +46,37 @@ import tempfile
 # column", compared case-insensitively against each CSV's actual header
 # row. Kept as a module-level tuple (not hardcoded inline) so a future task
 # can extend accepted spellings in one place if needed.
-_SERIAL_HEADER_NAMES = ("serial", "serialnumber")
+_SERIAL_HEADER_NAMES = ("serial", "serialnumber", "serialno")
+
+# What the first dropdown choice in the GUI means: "work out which column holds
+# the serial numbers". Spelled once here so the GUI and the tests agree.
+AUTO_COLUMN = "(detect automatically)"
+
+
+def _normalize_header(name):
+    # "Serial Number", "serial_number", " SerialNumber " and "serialNumber" all
+    # become "serialnumber": lower case, with spaces, underscores and other
+    # punctuation removed. GAM's own download header is serialNumber.
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+def pick_serial_column(headers, preferred=""):
+    # Which of these header names holds the serial numbers? The 'preferred'
+    # name (for example the serial_column setting) wins when it is present
+    # exactly or ignoring case/spacing; otherwise the first header that looks
+    # like "Serial" / "SerialNumber". Returns "" when nothing fits.
+    wanted = _normalize_header(preferred)
+    if wanted:
+        for name in headers:
+            if name.strip() == preferred.strip():
+                return name
+        for name in headers:
+            if _normalize_header(name) == wanted:
+                return name
+    for name in headers:
+        if _normalize_header(name) in _SERIAL_HEADER_NAMES:
+            return name
+    return ""
 
 
 def parse_multiline_serials(text):
@@ -76,7 +106,29 @@ def parse_multiline_serials(text):
     return result
 
 
-def read_csv_serials(csv_path):
+def read_csv_headers(csv_path):
+    # The column names in a CSV's first row, in order (so the GUI can offer
+    # them in a dropdown). Raises ValueError, like read_csv_serials(), for a
+    # missing/unreadable/empty file.
+    try:
+        with open(csv_path, newline="", encoding="utf-8-sig") as handle:
+            reader = csv.reader(handle)
+            first = next(reader, None)
+    except OSError as open_error:
+        raise ValueError("Could not open CSV file '{0}': {1}".format(csv_path, open_error)) from open_error
+    except (csv.Error, UnicodeError) as read_error:
+        raise ValueError("Could not read CSV file '{0}': {1}".format(csv_path, read_error)) from read_error
+    if not first:
+        raise ValueError("CSV file '{0}' has no header row".format(csv_path))
+    return [name.strip() for name in first if name.strip()]
+
+
+def read_csv_serials(csv_path, column=None):
+    # column: the header of the column that holds the serials, chosen by the
+    # person; None or AUTO_COLUMN means "find the Serial / SerialNumber column
+    # automatically".
+    if column == AUTO_COLUMN or (column is not None and not column.strip()):
+        column = None
     try:
         # utf-8-sig quietly handles a leading byte-order-mark, which Excel
         # adds to CSVs it saves - without this, the first header cell would
@@ -107,14 +159,26 @@ def read_csv_serials(csv_path):
         # case-insensitively (and with stray whitespace stripped) so
         # "Serial", "SERIAL", " Serial ", and "SerialNumber" all match.
         column_name = None
-        for name in reader.fieldnames:
-            if name.strip().lower() in _SERIAL_HEADER_NAMES:
-                column_name = name
-                break
+        if column is not None:
+            # The person picked a column: use exactly that one (ignoring case
+            # and stray spaces) - never guess a different one.
+            for name in reader.fieldnames:
+                if name.strip().lower() == column.strip().lower():
+                    column_name = name
+                    break
+            if column_name is None:
+                raise ValueError(
+                    "CSV file '{0}' has no column named '{1}'. Its columns are: {2}".format(
+                        csv_path, column, ", ".join(n.strip() for n in reader.fieldnames))
+                )
+        else:
+            column_name = pick_serial_column(reader.fieldnames) or None
         if column_name is None:
             raise ValueError(
                 'CSV file \'{0}\' must have a "Serial" or "SerialNumber" '
-                "column header".format(csv_path)
+                "column header (or choose the column that holds the serial "
+                "numbers). Its columns are: {1}".format(
+                    csv_path, ", ".join(n.strip() for n in reader.fieldnames))
             )
 
         seen = set()
